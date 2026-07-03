@@ -1,0 +1,375 @@
+// Rathinam MyDayOne — Prisma Schema
+// PostgreSQL · Prisma 5
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum StudentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  LOCKED
+}
+
+enum FormTemplateType {
+  REGISTRATION
+  ACKNOWLEDGMENT
+  DELIVERABLES_TABLE
+  DOCUMENT_UPLOAD
+}
+
+enum ResponseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADED
+  PROCESSING
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  FLAGGED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Institution  (RTC | RGU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Institution {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique  // "RTC" | "RGU"
+  fullName    String            // e.g. "Rathinam Technical Campus"
+  logoUrl     String?
+  primaryColor String?          // hex, e.g. "#1B3A8C"
+  accentColor  String?          // hex
+  address     String?
+  website     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  batches  Batch[]
+  admins   Admin[]
+
+  @@map("institutions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Batch  (a cohort: institution + course + year)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Batch {
+  id            String      @id @default(cuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  name          String      // display name, e.g. "RTC B.E./B.Tech 2024–25"
+  course        String      // e.g. "B.E. Computer Science"
+  department    String?
+  academicYear  String      // e.g. "2024-25"
+  logoUrl       String?     // per-batch college logo (overrides institution logo)
+  isActive      Boolean     @default(true)
+  inductionDeadline DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  students        Student[]
+  formAssignments BatchFormAssignment[]
+
+  @@map("batches")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Student
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Student {
+  id                  String        @id @default(cuid())
+  batchId             String
+  batch               Batch         @relation(fields: [batchId], references: [id])
+  regNo               String        @unique
+  name                String
+  email               String?
+  mobile              String?
+
+  // Auth
+  username            String        @unique  // usually regNo
+  passwordHash        String
+  mustResetPassword   Boolean       @default(true)
+  lastLoginAt         DateTime?
+
+  // Profile (filled during induction)
+  photoUrl            String?
+  gender              String?
+  aadhaarNumber       String?       // Encrypted at application layer before storage
+  accommodation       String?       // "HOSTEL" | "DAY_SCHOLAR"
+  transportRequired   Boolean?
+  boardingPoint       String?
+
+  // Father info
+  fatherName          String?
+  fatherMobile        String?
+  fatherOccupation    String?
+  fatherIncome        String?
+
+  // Mother info
+  motherName          String?
+  motherMobile        String?
+  motherOccupation    String?
+  motherIncome        String?
+
+  // Progress
+  status              StudentStatus @default(NOT_STARTED)
+  completionPct       Int           @default(0)
+  pdfUrl              String?
+  pdfGeneratedAt      DateTime?
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  formResponses       StudentFormResponse[]
+  signatures          Signature[]
+  documents           Document[]
+  rowAcknowledgments  DeliverableRowAcknowledgment[]
+  auditLogs           AuditLog[]    @relation("StudentAuditLogs")
+
+  @@map("students")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FormTemplate  (the reusable schema for a form type)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FormTemplate {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  type        FormTemplateType
+  // schema: JSON that defines the form structure.
+  // For REGISTRATION: list of field definitions.
+  // For ACKNOWLEDGMENT: { clauses: [...], declaration: "..." }
+  // For DELIVERABLES_TABLE: { rows: [{id, sno, deliverable, keyPoints}], declaration: "..." }
+  // For DOCUMENT_UPLOAD: { documents: [{id, type, label, required, accept}] }
+  schema      Json
+  // Configurable signature block labels per template
+  signatoryRoles Json         @default("[{\"role\":\"student\",\"label\":\"Student Signature\"},{\"role\":\"parent\",\"label\":\"Parent / Guardian Signature\"}]")
+  version     Int             @default(1)
+  isActive    Boolean         @default(true)
+  createdBy   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  batchAssignments   BatchFormAssignment[]
+  studentResponses   StudentFormResponse[]
+  signatures         Signature[]
+  rowAcknowledgments DeliverableRowAcknowledgment[]
+
+  @@map("form_templates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BatchFormAssignment  (which templates are assigned to which batch, in order)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BatchFormAssignment {
+  id             String       @id @default(cuid())
+  batchId        String
+  batch          Batch        @relation(fields: [batchId], references: [id])
+  formTemplateId String
+  formTemplate   FormTemplate @relation(fields: [formTemplateId], references: [id])
+  order          Int          // Display/completion order (1-based)
+  required       Boolean      @default(true)
+  stepSlug       String       // URL slug, e.g. "registration", "code-of-conduct"
+  createdAt      DateTime     @default(now())
+
+  @@unique([batchId, formTemplateId])
+  @@unique([batchId, order])
+  @@unique([batchId, stepSlug])
+  @@map("batch_form_assignments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StudentFormResponse  (the student's answers/data for one template)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model StudentFormResponse {
+  id             String         @id @default(cuid())
+  studentId      String
+  student        Student        @relation(fields: [studentId], references: [id])
+  formTemplateId String
+  formTemplate   FormTemplate   @relation(fields: [formTemplateId], references: [id])
+  // data: validated JSON matching the template schema's field IDs
+  data           Json           @default("{}")
+  status         ResponseStatus @default(DRAFT)
+  lastSavedAt    DateTime?
+  submittedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([studentId, formTemplateId])
+  @@map("student_form_responses")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeliverableRowAcknowledgment  (per-row sign-off for DELIVERABLES_TABLE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DeliverableRowAcknowledgment {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  formTemplateId String
+  formTemplate   FormTemplate @relation(fields: [formTemplateId], references: [id])
+  rowId          String       // Matches the row.id in FormTemplate.schema.rows
+  acknowledgedAt DateTime     @default(now())
+  ipAddress      String?
+  userAgent      String?
+
+  @@unique([studentId, formTemplateId, rowId])
+  @@map("deliverable_row_acknowledgments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signature  (per-student, per-template, per-signatory-role)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Signature {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  formTemplateId String
+  formTemplate   FormTemplate @relation(fields: [formTemplateId], references: [id])
+  signatoryRole  String       // "student" | "parent" | "authorized_signatory"
+  imageUrl       String       // path/url to PNG
+  imageHash      String       // SHA-256 of image data for integrity
+  ipAddress      String?
+  userAgent      String?
+  signedAt       DateTime     @default(now())
+
+  @@unique([studentId, formTemplateId, signatoryRole])
+  @@map("signatures")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document  (uploaded files: marksheets, Aadhaar, photo, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Document {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  documentType   String       // "10th_marksheet" | "12th_marksheet" | "aadhaar" | "photo" | "tc" | "community_cert" …
+  label          String       // Display label, e.g. "10th Mark Sheet"
+  fileUrl        String
+  fileName       String
+  fileSize       Int          // bytes
+  mimeType       String
+  thumbnailUrl   String?
+
+  uploadStatus   UploadStatus @default(PENDING)
+  reviewStatus   ReviewStatus @default(PENDING)
+  reviewedBy     String?
+  reviewNote     String?
+  reviewedAt     DateTime?
+
+  uploadedAt     DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SignatureOtp  (one-time password used to authenticate applying a signature)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SignatureOtp {
+  id             String    @id @default(cuid())
+  studentId      String
+  formTemplateId String
+  // SHA-256 of the OTP (never store the plain code)
+  codeHash       String
+  // Where it was sent (masked mobile kept for audit)
+  destination    String
+  purpose        String    @default("SIGNATURE")
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([studentId, formTemplateId])
+  @@map("signature_otps")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Admin {
+  id            String       @id @default(cuid())
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  name          String
+  email         String       @unique
+  passwordHash  String
+  role          AdminRole    @default(STAFF)
+  isActive      Boolean      @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  auditLogs     AuditLog[]   @relation("AdminAuditLogs")
+
+  @@map("admins")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AuditLog
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String    @id @default(cuid())
+
+  // Actor
+  adminId     String?
+  admin       Admin?    @relation("AdminAuditLogs", fields: [adminId], references: [id])
+  studentId   String?
+  student     Student?  @relation("StudentAuditLogs", fields: [studentId], references: [id])
+  actorType   String    // "admin" | "student" | "system"
+
+  // Event
+  action      String    // e.g. "TEMPLATE_CREATED", "BATCH_ASSIGNED", "FORM_SUBMITTED", "PDF_GENERATED"
+  entityType  String    // e.g. "FormTemplate", "Student", "Batch"
+  entityId    String
+  description String?
+  metadata    Json?     // arbitrary extra context
+
+  // Context
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  @@map("audit_logs")
+}

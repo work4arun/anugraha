@@ -1,0 +1,330 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ────────────────────────────────────────────────── */
+:root {
+  /* Brand colors (mirrored from tailwind.config.ts — change in both places) */
+  /* Primary = mild light green · Accent = light blue (never blended) */
+  --color-brand:         #4E9A2F;
+  --color-brand-dark:    #3E7D25;
+  --color-brand-light:   #9AD24D;
+  --color-brand-50:      #F5FBEA;
+  --color-accent:        #27AAE1;
+  --color-accent-dark:   #1E86B4;
+  --color-accent-light:  #63C6EC;
+
+  /* Surface */
+  --color-surface:       #FFFFFF;
+  --color-surface-muted: #F9FAFB;
+  --color-surface-subtle:#F3F4F6;
+  --color-border:        #E5E7EB;
+
+  /* Ink */
+  --color-ink:           #111827;
+  --color-ink-muted:     #6B7280;
+  --color-ink-faint:     #9CA3AF;
+
+  /* Semantic */
+  --color-success:       #16A34A;
+  --color-warning:       #D97706;
+  --color-error:         #DC2626;
+
+  /* Motion (house-style easing) */
+  --ease-brand:          cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-brand-out:      cubic-bezier(0.22, 0.61, 0.36, 1.00);
+  --ease-spring:         cubic-bezier(0.34, 1.56, 0.64, 1.00);
+
+  /* Spacing tokens */
+  --touch-target:        44px;
+  --bottom-bar-height:   72px;
+
+  /* Rounded corners */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+}
+
+/* ── Base reset / global styles ─────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Smooth scrolling everywhere */
+  scroll-behavior: smooth;
+  /* Prevent text size adjustment on orientation change */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-geist-sans), Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal overflow */
+  overflow-x: hidden;
+}
+
+/* Minimum touch target for all interactive elements */
+button,
+a,
+[role="button"],
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: var(--touch-target);
+}
+
+/* ── Focus ring ──────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Remove default focus for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Form inputs ─────────────────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* Prevent iOS from zooming in on input focus (requires font-size >= 16px) */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* ── Signature canvas scroll-lock ────────────────────────────────────────── */
+.signature-active body {
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* ── Progress bar animation ──────────────────────────────────────────────── */
+.progress-bar {
+  transition: width 600ms var(--ease-brand-out);
+}
+
+/* ── Character-boxed input (like exam registration) ──────────────────────── */
+.char-box-input {
+  display: flex;
+  gap: 4px;
+}
+
+.char-box-input input[type="text"] {
+  width: 36px;
+  height: 40px;
+  text-align: center;
+  font-weight: 600;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  transition: border-color 200ms var(--ease-brand);
+}
+
+.char-box-input input[type="text"]:focus {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(78, 154, 47, 0.12);
+}
+
+/* ── Reduced motion fallback ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Utility: sticky bottom action bar (mobile) ──────────────────────────── */
+.bottom-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--bottom-bar-height);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--color-border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 50;
+}
+
+/* ── PDF print styles ────────────────────────────────────────────────────── */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+
+  .print-page-break {
+    page-break-before: always;
+  }
+}
+
+/* ── Scrollbar styling (webkit) ──────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+}
+
+/* ── Animated gradient for loading states ────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-subtle) 25%,
+    var(--color-surface-muted)  50%,
+    var(--color-surface-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* ── Animated ambient background (green-led, blue accent) ─────────────────── */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #FFFFFF;
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.ambient-blob--green-1 {
+  width: 46vw; height: 46vw; max-width: 520px; max-height: 520px;
+  top: -8%; left: -6%;
+  background: radial-gradient(circle at 30% 30%, #DDF0B8, #9AD24D);
+  opacity: 0.5;
+  animation: aurora-drift 26s ease-in-out infinite;
+}
+
+.ambient-blob--green-2 {
+  width: 40vw; height: 40vw; max-width: 460px; max-height: 460px;
+  bottom: -12%; left: 20%;
+  background: radial-gradient(circle at 50% 50%, #E7F6C8, #B7E077);
+  opacity: 0.42;
+  animation: float-slow 22s ease-in-out infinite;
+}
+
+.ambient-blob--blue-1 {
+  width: 38vw; height: 38vw; max-width: 440px; max-height: 440px;
+  top: 4%; right: -8%;
+  background: radial-gradient(circle at 50% 50%, #BEE7F8, #63C6EC);
+  opacity: 0.34;
+  animation: float-slow 20s ease-in-out infinite reverse;
+}
+
+/* Fine grain sparkle layer — subtle floating dots */
+.ambient-spark {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 9999px;
+  background: rgba(141, 198, 63, 0.4);
+  animation: float-slow 14s ease-in-out infinite;
+}
+
+/* Constellation / futuristic variants — canvas fills the ambient layer */
+.ambient-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Campus variant — floating college icons that collide and bounce */
+.ambient-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0.32;
+  will-change: transform;
+}
+
+/* Bubbles variant */
+@keyframes bubble-rise {
+  0%   { transform: translateY(0) scale(0.9);   opacity: 0; }
+  12%  { opacity: 0.5; }
+  88%  { opacity: 0.5; }
+  100% { transform: translateY(-112vh) scale(1.15); opacity: 0; }
+}
+.ambient-bubble {
+  position: absolute;
+  bottom: -80px;
+  border-radius: 9999px;
+  filter: blur(1px);
+  animation: bubble-rise linear infinite;
+}
+
+/* Waves variant */
+@keyframes wave-slide {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.ambient-wave {
+  position: absolute;
+  left: 0;
+  width: 200%;
+  height: 200px;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob,
+  .ambient-spark,
+  .ambient-bubble,
+  .ambient-wave {
+    animation: none !important;
+  }
+}

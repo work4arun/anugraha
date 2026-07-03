@@ -1,0 +1,163 @@
+/**
+ * Shared TypeScript types for Rathinam MyDayOne
+ */
+
+// ── Form Template Schema Types ─────────────────────────────────────────────
+
+export type FieldType =
+  | "text"
+  | "tel"
+  | "email"
+  | "number"
+  | "date"
+  | "radio"
+  | "checkbox"
+  | "select"
+  | "textarea"
+  | "section_header";
+
+export interface FieldDefinition {
+  id: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  readOnly?: boolean;
+  inputMode?: "text" | "numeric" | "tel" | "email" | "url";
+  maxLength?: number;
+  pattern?: string;
+  hint?: string;
+  options?: string[];
+  defaultValue?: string | boolean;
+  defaultToday?: boolean; // for date fields
+  characterBoxed?: boolean; // render as character-boxed input (like exam forms)
+  sensitive?: boolean; // e.g. Aadhaar — mask in UI
+  showWhen?: { field: string; value: string | boolean }; // conditional display
+}
+
+export interface RegistrationSchema {
+  fields: FieldDefinition[];
+  declaration: string;
+}
+
+export interface AcknowledgmentSchema {
+  clauses: string[];
+  acknowledgmentText: string;
+  guaranteeDeclaration?: string; // for placement undertaking (parent-facing)
+  place: { id: string; label: string; required: boolean };
+  date: { id: string; label: string; required: boolean; defaultToday?: boolean };
+}
+
+export interface DeliverableRow {
+  id: string;
+  sno: number;
+  deliverable: string;
+  keyPoints: string;
+}
+
+export interface DeliverableTableSchema {
+  programmeHeader?: { label: string; value: string };
+  rows: DeliverableRow[];
+  declaration: string;
+  place: { id: string; label: string; required: boolean };
+  date: { id: string; label: string; required: boolean; defaultToday?: boolean };
+}
+
+export interface DocumentDefinition {
+  id: string;
+  type: string;
+  label: string;
+  required: boolean;
+  accept: string;
+  maxSizeMB: number;
+  hint?: string;
+}
+
+export interface DocumentUploadSchema {
+  documents: DocumentDefinition[];
+}
+
+export type FormSchema =
+  | RegistrationSchema
+  | AcknowledgmentSchema
+  | DeliverableTableSchema
+  | DocumentUploadSchema;
+
+// ── Signatory Role ─────────────────────────────────────────────────────────
+
+export interface SignatoryRole {
+  role: "student" | "parent" | "authorized_signatory";
+  label: string;
+}
+
+// ── Step / Progress ────────────────────────────────────────────────────────
+
+export type StepStatus = "not_started" | "in_progress" | "completed";
+
+export interface InductionStep {
+  id: string;
+  order: number;
+  stepSlug: string;
+  name: string;
+  type: "REGISTRATION" | "ACKNOWLEDGMENT" | "DELIVERABLES_TABLE" | "DOCUMENT_UPLOAD";
+  required: boolean;
+  status: StepStatus;
+  formTemplateId: string;
+}
+
+// ── Student Profile ─────────────────────────────────────────────────────────
+
+export interface StudentProfile {
+  id: string;
+  regNo: string;
+  name: string;
+  email?: string;
+  mobile?: string;
+  photoUrl?: string;
+  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "LOCKED";
+  completionPct: number;
+  mustResetPassword: boolean;
+  batch: {
+    id: string;
+    name: string;
+    course: string;
+    academicYear: string;
+    logoUrl?: string;
+    institution: {
+      code: string;
+      name: string;
+      fullName: string;
+      primaryColor?: string;
+      accentColor?: string;
+    };
+  };
+  steps: InductionStep[];
+}
+
+// ── Admin Dashboard ────────────────────────────────────────────────────────
+
+export interface BatchStat {
+  batchId: string;
+  batchName: string;
+  course: string;
+  institutionCode: string;
+  total: number;
+  notStarted: number;
+  inProgress: number;
+  completed: number;
+  completionPct: number;
+}
+
+// ── API Responses ──────────────────────────────────────────────────────────
+
+export interface ApiSuccess<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiError {
+  success: false;
+  error: string;
+  details?: Record<string, string[]>;
+}
+
+export type ApiResponse<T> = ApiSuccess<T> | ApiError;
