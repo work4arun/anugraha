@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
-    // Lint errors (unused vars, unescaped quotes) shouldn't block production builds.
-    // Run `npm run lint` in dev/CI instead.
     ignoreDuringBuilds: true,
   },
   experimental: {
