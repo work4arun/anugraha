@@ -8,7 +8,22 @@ import { Loader2 } from "lucide-react";
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 export type ButtonSize = "sm" | "md" | "lg";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+// framer-motion's motion.button redefines these drag/animation handlers with
+// different signatures than React's native ones, so omit them to avoid the clash.
+type ConflictingMotionProps =
+  | "onDrag"
+  | "onDragStart"
+  | "onDragEnd"
+  | "onDragEnter"
+  | "onDragLeave"
+  | "onDragOver"
+  | "onDragExit"
+  | "onAnimationStart"
+  | "onAnimationEnd"
+  | "onAnimationIteration";
+
+interface ButtonProps
+  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, ConflictingMotionProps> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
