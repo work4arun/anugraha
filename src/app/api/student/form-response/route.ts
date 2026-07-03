@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getIpAddress } from "@/lib/utils";
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
         studentId_formTemplateId: { studentId, formTemplateId },
       },
       update: {
-        data,
+        data: data as Prisma.InputJsonValue,
         status: status as "DRAFT" | "SUBMITTED",
         lastSavedAt: now,
         submittedAt: status === "SUBMITTED" ? now : undefined,
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       create: {
         studentId,
         formTemplateId,
-        data,
+        data: data as Prisma.InputJsonValue,
         status: status as "DRAFT" | "SUBMITTED",
         lastSavedAt: now,
         submittedAt: status === "SUBMITTED" ? now : undefined,
