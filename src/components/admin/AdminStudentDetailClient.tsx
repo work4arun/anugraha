@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,8 @@ import type { StudentProfile } from "@/types";
 
 interface Props {
   profile: StudentProfile;
+  pdfUrl?: string | null;
+  pdfGeneratedAt?: string | null;
   documents: Array<{
     id: string;
     type: string;
@@ -27,12 +29,14 @@ interface Props {
   }>;
 }
 
-export function AdminStudentDetailClient({ profile, documents }: Props) {
+export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, documents }: Props) {
   const router = useRouter();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [pwValue, setPwValue] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(pdfUrl ?? null);
 
   async function saveStudentPassword() {
     if (pwValue.length < 6) {
@@ -76,18 +80,37 @@ export function AdminStudentDetailClient({ profile, documents }: Props) {
   }
 
   async function generatePdf() {
+    // Open the tab synchronously so it isn't blocked as a popup, then point it
+    // at the freshly generated PDF once the request resolves.
+    const previewWindow = window.open("", "_blank");
+    setPdfBusy(true);
     try {
       const res = await fetch("/api/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: profile.id }),
       });
-      if (!res.ok) throw new Error();
-      toast.success("PDF generated");
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error);
+      const url = data.data?.url as string | undefined;
+      if (url) {
+        setCurrentPdfUrl(url);
+        if (previewWindow) previewWindow.location.href = url;
+      } else {
+        previewWindow?.close();
+      }
+      toast.success("PDF generated — preview opened");
       router.refresh();
-    } catch {
-      toast.error("PDF generation failed");
+    } catch (err) {
+      previewWindow?.close();
+      toast.error(err instanceof Error && err.message ? err.message : "PDF generation failed");
+    } finally {
+      setPdfBusy(false);
     }
+  }
+
+  function previewPdf() {
+    if (currentPdfUrl) window.open(currentPdfUrl, "_blank");
   }
 
   return (
@@ -112,13 +135,29 @@ export function AdminStudentDetailClient({ profile, documents }: Props) {
           >
             Reset Password
           </Button>
+          {currentPdfUrl && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={previewPdf}
+              icon={<FileText className="w-4 h-4" />}
+              title={
+                pdfGeneratedAt
+                  ? `Last generated ${new Date(pdfGeneratedAt).toLocaleString()}`
+                  : "Preview the generated PDF"
+              }
+            >
+              Preview PDF
+            </Button>
+          )}
           <Button
             size="sm"
             variant="secondary"
             onClick={generatePdf}
+            loading={pdfBusy}
             icon={<FileDown className="w-4 h-4" />}
           >
-            Generate PDF
+            {currentPdfUrl ? "Regenerate PDF" : "Generate PDF"}
           </Button>
         </div>
       </header>

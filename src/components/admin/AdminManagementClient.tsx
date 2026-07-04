@@ -13,6 +13,7 @@ import {
   KeyRound,
   Power,
   PowerOff,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -64,6 +65,10 @@ export function AdminManagementClient({
   const [pwTarget, setPwTarget] = useState<AdminRow | null>(null);
   const [pwValue, setPwValue] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+
+  // Delete-confirmation modal state
+  const [deleteTarget, setDeleteTarget] = useState<AdminRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   async function createAdmin(e: React.FormEvent) {
     e.preventDefault();
@@ -122,6 +127,25 @@ export function AdminManagementClient({
   function openPwModal(admin: AdminRow) {
     setPwValue("");
     setPwTarget(admin);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/admins/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`${deleteTarget.name} deleted`);
+      setDeleteTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete admin");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function savePassword() {
@@ -315,19 +339,30 @@ export function AdminManagementClient({
                       <KeyRound className="w-4 h-4" />
                     </button>
                     {admin.id !== currentAdminId && (
-                      <button
-                        onClick={() => toggleActive(admin)}
-                        disabled={rowBusy === admin.id}
-                        title={admin.isActive ? "Deactivate" : "Activate"}
-                        aria-label={admin.isActive ? "Deactivate" : "Activate"}
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light transition-colors disabled:opacity-40"
-                      >
-                        {admin.isActive ? (
-                          <PowerOff className="w-4 h-4" />
-                        ) : (
-                          <Power className="w-4 h-4" />
-                        )}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => toggleActive(admin)}
+                          disabled={rowBusy === admin.id}
+                          title={admin.isActive ? "Deactivate" : "Activate"}
+                          aria-label={admin.isActive ? "Deactivate" : "Activate"}
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light transition-colors disabled:opacity-40"
+                        >
+                          {admin.isActive ? (
+                            <PowerOff className="w-4 h-4" />
+                          ) : (
+                            <Power className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(admin)}
+                          disabled={rowBusy === admin.id}
+                          title="Delete admin"
+                          aria-label="Delete admin"
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light transition-colors disabled:opacity-40"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </motion.div>
@@ -373,6 +408,44 @@ export function AdminManagementClient({
               </Button>
               <Button onClick={savePassword} loading={pwBusy} icon={<KeyRound className="w-4 h-4" />}>
                 Save password
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete-confirmation modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !deleteBusy && setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Delete admin</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This permanently removes{" "}
+              <span className="font-medium text-ink">{deleteTarget.name}</span> ({deleteTarget.email}).
+              This cannot be undone. If you only want to block access, deactivate them instead.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDelete}
+                loading={deleteBusy}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete
               </Button>
             </div>
           </div>

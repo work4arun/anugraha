@@ -4,7 +4,6 @@
  * Called server-side only — never import this in client components.
  */
 
-import puppeteer from "puppeteer";
 import { prisma } from "./prisma";
 import { uploadFile, hashBuffer } from "./storage";
 import { pdfFilename, formatDate } from "./utils";
@@ -12,6 +11,45 @@ import { pdfFilename, formatDate } from "./utils";
 interface PdfGenerationResult {
   url: string;
   filename: string;
+}
+
+/**
+ * Launch a Chromium instance that works both locally and on serverless hosts.
+ *
+ * - Serverless (Vercel / AWS Lambda): the full `puppeteer` package bundles a
+ *   ~170 MB Chromium that blows past the function size limit, which makes the
+ *   /api/pdf function fail to deploy (returns 404). We instead use the slim
+ *   `@sparticuz/chromium` binary with `puppeteer-core`.
+ * - Local dev: use the full `puppeteer` (or a Chrome pointed to by
+ *   PUPPETEER_EXECUTABLE_PATH).
+ */
+async function launchBrowser() {
+  // In production we always use the slim @sparticuz/chromium (a prod dependency).
+  // Full `puppeteer` is a dev-only dependency, used for local development.
+  const useSlimChromium =
+    process.env.NODE_ENV === "production" ||
+    !!process.env.VERCEL ||
+    !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.PUPPETEER_SERVERLESS === "1";
+
+  if (useSlimChromium) {
+    const chromium = (await import("@sparticuz/chromium")).default;
+    const puppeteerCore = (await import("puppeteer-core")).default;
+    return puppeteerCore.launch({
+      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
+      headless: true,
+    });
+  }
+
+  // Local / non-serverless: full puppeteer (bundled Chromium).
+  const puppeteer = (await import("puppeteer")).default;
+  return puppeteer.launch({
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
 }
 
 export async function generateStudentPdf(
@@ -41,16 +79,8 @@ export async function generateStudentPdf(
 
   const html = buildPdfHtml(student);
 
-  // ── Launch Puppeteer ──────────────────────────────────────────────────────
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-  });
+  // ── Launch Puppeteer (serverless-aware) ───────────────────────────────────
+  const browser = await launchBrowser();
 
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: "networkidle0" });

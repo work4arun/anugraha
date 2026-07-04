@@ -14,7 +14,15 @@ export type FieldType =
   | "checkbox"
   | "select"
   | "textarea"
+  | "transport_select"
   | "section_header";
+
+// A bus route and its boarding points (for the cascading Transport selector).
+export interface TransportRoute {
+  route: string;            // e.g. "Route 1 — Gandhipuram"
+  fee?: string;             // annual fee, e.g. "₹18,000"
+  boardingPoints: string[]; // e.g. ["Gandhipuram", "Town Hall", ...]
+}
 
 export interface FieldDefinition {
   id: string;
@@ -32,6 +40,7 @@ export interface FieldDefinition {
   characterBoxed?: boolean; // render as character-boxed input (like exam forms)
   sensitive?: boolean; // e.g. Aadhaar — mask in UI
   showWhen?: { field: string; value: string | boolean }; // conditional display
+  routes?: TransportRoute[]; // for type "transport_select": route → boarding points
 }
 
 export interface RegistrationSchema {

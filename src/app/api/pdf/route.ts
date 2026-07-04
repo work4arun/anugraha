@@ -3,6 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateStudentPdf } from "@/lib/pdf";
 
+// PDF generation needs the Node.js runtime (Puppeteer/Chromium) and more time
+// than the default serverless budget.
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 // POST /api/pdf — generate the consolidated PDF for the authenticated student
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);

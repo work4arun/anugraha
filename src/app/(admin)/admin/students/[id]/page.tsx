@@ -19,6 +19,11 @@ export default async function AdminStudentDetailPage({
   const profile = await getStudentProfile(params.id);
   if (!profile) notFound();
 
+  const student = await prisma.student.findUnique({
+    where: { id: params.id },
+    select: { pdfUrl: true, pdfGeneratedAt: true },
+  });
+
   const docs = await prisma.document.findMany({
     where: { studentId: params.id },
   });
@@ -30,6 +35,8 @@ export default async function AdminStudentDetailPage({
   return (
     <AdminStudentDetailClient
       profile={profile}
+      pdfUrl={student?.pdfUrl ?? null}
+      pdfGeneratedAt={student?.pdfGeneratedAt?.toISOString() ?? null}
       documents={docs.map((d) => ({
         id: d.id,
         type: d.documentType,

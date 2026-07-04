@@ -16,6 +16,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { TRANSPORT_ROUTES } from "../src/lib/transport";
 
 const prisma = new PrismaClient();
 
@@ -219,12 +220,13 @@ async function main() {
             required: false,
           },
           {
-            id: "boarding_point",
-            label: "Boarding Point",
-            type: "text",
-            required: false,
+            id: "transport_selection",
+            label: "Transport Selection",
+            type: "transport_select",
+            required: true,
             showWhen: { field: "transport_required", value: true },
-            hint: "Your nearest bus boarding point",
+            hint: "Select your bus route, then your boarding point",
+            routes: TRANSPORT_ROUTES,
           },
           {
             id: "place",

@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SignatureCanvas } from "@/components/signature/SignatureCanvas";
+import { TransportSelect, type TransportValue } from "@/components/forms/TransportSelect";
 import { listContainer, listItem } from "@/lib/motion";
 import type { RegistrationSchema, FieldDefinition } from "@/types";
 
@@ -178,6 +179,36 @@ export function RegistrationForm({
                 description={field.hint}
                 checked={!!f.value}
                 onChange={(e) => f.onChange(e.target.checked)}
+              />
+            )}
+          />
+        </motion.div>
+      );
+    }
+
+    if (field.type === "transport_select") {
+      return (
+        <motion.div key={field.id} variants={listItem}>
+          <Controller
+            name={field.id}
+            control={control}
+            rules={{
+              validate: (v: unknown) => {
+                if (!field.required) return true;
+                const val = (v as TransportValue) ?? {};
+                if (!val.route) return "Please select your bus route";
+                if (!val.boardingPoint) return "Please select your boarding point";
+                return true;
+              },
+            }}
+            render={({ field: f }) => (
+              <TransportSelect
+                label={field.label}
+                routes={field.routes ?? []}
+                required={field.required}
+                value={f.value as TransportValue | null}
+                onChange={f.onChange}
+                error={errors[field.id]?.message as string}
               />
             )}
           />

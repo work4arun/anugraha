@@ -13,6 +13,8 @@ import {
   Table2,
   Upload,
   X,
+  Copy,
+  User,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -34,6 +36,14 @@ interface TemplateRow {
   type: TemplateType;
   version: number;
   assignedCount: number;
+  ownerId: string | null;
+  ownerName: string | null;
+}
+
+interface AdminOption {
+  id: string;
+  name: string;
+  email: string;
 }
 
 const typeIcon: Record<TemplateType, typeof FileText> = {

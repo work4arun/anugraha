@@ -7,9 +7,10 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb", // for document uploads
     },
-    // Puppeteer requires certain modules to be excluded from bundling
+    // Puppeteer / Chromium must be excluded from bundling so the serverless
+    // function stays small (bundling full Chromium makes /api/pdf 404 on deploy).
     // (Next 14 key; renamed to top-level `serverExternalPackages` in Next 15)
-    serverComponentsExternalPackages: ["puppeteer", "puppeteer-core"],
+    serverComponentsExternalPackages: ["puppeteer", "puppeteer-core", "@sparticuz/chromium"],
   },
   images: {
     remotePatterns: [
