@@ -1,19 +1,20 @@
 "use client";
 
 /**
- * SignatureOtpBlock — authenticate-to-sign for forms AFTER the Registration form.
+ * SignatureOtpBlock — reuse-to-sign for forms AFTER the Registration form.
  *
- * Instead of drawing/uploading again, the student's signature captured on the
- * Registration form is loaded and applied once they verify a one-time password
- * sent to their registered mobile. The parent's signature is auto-reused in the
- * same step. Any signatory role that has no saved signature (e.g. an authorised
- * signatory) falls back to a draw pad.
+ * The student's signature captured on the Registration form is loaded and
+ * applied with a single confirming click (they're already authenticated by
+ * their session — no OTP). Any signatory role that has no saved signature
+ * (e.g. an authorised signatory) falls back to a draw pad.
+ *
+ * (Component name kept for backwards compatibility with existing imports.)
  */
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { ShieldCheck, Smartphone, CheckCircle2, PenLine, Info } from "lucide-react";
+import { ShieldCheck, CheckCircle2, PenLine, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -42,69 +43,35 @@ export function SignatureOtpBlock({
   onSigned,
 }: Props) {
   const rolesWithMaster = signatoryRoles.filter((r) => masterSignatures[r.role]);
-  const rolesNeedingDraw = signatoryRoles.filter(
-    (r) => !masterSignatures[r.role]
-  );
+  const rolesNeedingDraw = signatoryRoles.filter((r) => !masterSignatures[r.role]);
 
   const alreadyApplied = rolesWithMaster.every((r) => existingSignatures[r.role]);
 
-  const [stage, setStage] = useState<"idle" | "sent" | "done">(
-    alreadyApplied ? "done" : "idle"
-  );
-  const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [code, setCode] = useState("");
-  const [masked, setMasked] = useState<string | null>(null);
-  const [devCode, setDevCode] = useState<string | null>(null);
+  const [applied, setApplied] = useState(alreadyApplied);
+  const [applying, setApplying] = useState(false);
 
   const noMaster = rolesWithMaster.length === 0;
 
-  async function sendOtp() {
-    setSending(true);
+  async function applySignature() {
+    setApplying(true);
     try {
-      const res = await fetch("/api/student/signature/otp/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formTemplateId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not send OTP");
-      setMasked(data.data?.maskedMobile ?? null);
-      setDevCode(data.data?.devCode ?? null);
-      setStage("sent");
-      toast.success(`OTP sent to ${data.data?.maskedMobile ?? "your mobile"}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not send OTP");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function verifyOtp() {
-    if (code.trim().length < 4) {
-      toast.error("Enter the OTP you received");
-      return;
-    }
-    setVerifying(true);
-    try {
-      const res = await fetch("/api/student/signature/otp/verify", {
+      const res = await fetch("/api/student/signature/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           formTemplateId,
-          code: code.trim(),
           roles: rolesWithMaster.map((r) => r.role),
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Verification failed");
+      if (!res.ok) throw new Error(data.error ?? "Could not apply signature");
       onSigned(data.data?.signatures ?? {});
-      setStage("done");
+      setApplied(true);
       toast.success("Signature applied");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Verification failed");
+      toast.error(e instanceof Error ? e.message : "Could not apply signature");
     } finally {
-      setVerifying(false);
+      setApplying(false);
     }
   }
 
@@ -125,12 +92,12 @@ export function SignatureOtpBlock({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Roles backed by a saved signature → OTP authentication */}
+      {/* Roles backed by a saved signature → apply with one click */}
       {rolesWithMaster.length > 0 && (
         <Card padding="md" className="border-brand/20">
           <div className="flex items-center gap-2 mb-3">
             <ShieldCheck className="w-4 h-4 text-brand" />
-            <h4 className="text-sm font-semibold text-ink">Authenticate to sign</h4>
+            <h4 className="text-sm font-semibold text-ink">Apply your signature</h4>
           </div>
 
           {/* Loaded signatures preview */}
@@ -153,52 +120,23 @@ export function SignatureOtpBlock({
             ))}
           </div>
 
-          {stage === "done" ? (
+          {applied ? (
             <div className="flex items-center gap-2 text-success text-sm font-medium">
               <CheckCircle2 className="w-4 h-4" />
-              Signature applied and verified
+              Signature applied
             </div>
           ) : disabled ? (
             <p className="text-xs text-ink-muted">Signing is closed for this submitted form.</p>
-          ) : stage === "idle" ? (
+          ) : (
             <Button
               size="md"
-              onClick={sendOtp}
-              loading={sending}
-              icon={<Smartphone className="w-4 h-4" />}
+              onClick={applySignature}
+              loading={applying}
+              icon={<ShieldCheck className="w-4 h-4" />}
               fullWidth
             >
-              Send OTP to my registered mobile
+              Apply my saved signature
             </Button>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-xs text-ink-muted">
-                Enter the 6-digit OTP sent to <span className="font-medium text-ink">{masked}</span>.
-              </p>
-              {devCode && (
-                <div className="flex items-center gap-1.5 text-[11px] text-accent-dark bg-accent-50 rounded-lg px-2.5 py-1.5">
-                  <Info className="w-3.5 h-3.5 shrink-0" />
-                  Dev mode (no SMS gateway): your OTP is <span className="font-mono font-semibold">{devCode}</span>
-                </div>
-              )}
-              <input
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="Enter OTP"
-                className="w-full px-4 py-3 rounded-xl border-2 border-surface-border text-center text-lg tracking-[0.4em] font-semibold focus:border-brand focus:outline-none"
-              />
-              <div className="flex gap-2">
-                <Button variant="secondary" size="md" onClick={sendOtp} loading={sending}>
-                  Resend
-                </Button>
-                <Button size="md" onClick={verifyOtp} loading={verifying} fullWidth icon={<ShieldCheck className="w-4 h-4" />}>
-                  Verify &amp; sign
-                </Button>
-              </div>
-            </div>
           )}
         </Card>
       )}
@@ -216,7 +154,7 @@ export function SignatureOtpBlock({
               <p className="text-sm font-semibold text-warning">Add your signature first</p>
               <p className="text-xs text-warning/80 mt-0.5">
                 Please complete and sign the <span className="font-medium">Student Registration Form</span>.
-                After that, you can sign every other form using a quick OTP — no re-signing needed.
+                After that, you can apply it to every other form with a single tap — no re-signing needed.
               </p>
             </div>
           </motion.div>

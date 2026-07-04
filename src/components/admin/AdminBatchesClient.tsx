@@ -19,6 +19,7 @@ import {
 
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Input } from "@/components/ui/Input";
 import { listContainer, listItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -43,23 +44,39 @@ export function AdminBatchesClient({
   institutions: Array<{ id: string; code: string; name: string }>;
 }) {
   const router = useRouter();
-  const [dupId, setDupId] = useState<string | null>(null);
+  const [dupTarget, setDupTarget] = useState<Batch | null>(null);
+  const [dupName, setDupName] = useState("");
+  const [dupBusy, setDupBusy] = useState(false);
 
   const templates = batches.filter((b) => b.isTemplate);
   const regular = batches.filter((b) => !b.isTemplate);
 
-  async function duplicate(e: React.MouseEvent, id: string) {
+  function openDuplicate(e: React.MouseEvent, batch: Batch) {
     e.stopPropagation();
-    setDupId(id);
+    setDupName(`Copy of ${batch.name}`);
+    setDupTarget(batch);
+  }
+
+  async function confirmDuplicate() {
+    if (!dupTarget) return;
+    if (!dupName.trim()) {
+      toast.error("Enter a name for the new batch");
+      return;
+    }
+    setDupBusy(true);
     try {
-      const res = await fetch(`/api/admin/batches/${id}/duplicate`, { method: "POST" });
+      const res = await fetch(`/api/admin/batches/${dupTarget.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: dupName.trim() }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success("Batch created from template — opening it");
+      toast.success("Batch created — opening it");
       router.push(`/admin/batches/${data.data.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not duplicate batch");
-      setDupId(null);
+      setDupBusy(false);
     }
   }
 
@@ -120,9 +137,9 @@ export function AdminBatchesClient({
             <Button
               size="sm"
               variant={template ? "primary" : "ghost"}
-              loading={dupId === batch.id}
+              loading={dupBusy && dupTarget?.id === batch.id}
               icon={<Copy className="w-4 h-4" />}
-              onClick={(e) => duplicate(e, batch.id)}
+              onClick={(e) => openDuplicate(e, batch)}
             >
               {template ? "Use / Duplicate" : "Duplicate"}
             </Button>
@@ -210,6 +227,41 @@ export function AdminBatchesClient({
           </motion.div>
         </section>
       </main>
+
+      {/* Duplicate + rename modal */}
+      {dupTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !dupBusy && setDupTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Duplicate batch</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              Copies steps, logo and settings from{" "}
+              <span className="font-medium text-ink">{dupTarget.name}</span> into a new batch you own.
+              No students are copied.
+            </p>
+            <Input
+              id="dup-name"
+              label="New batch name"
+              value={dupName}
+              onChange={(e) => setDupName(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDupTarget(null)} disabled={dupBusy}>
+                Cancel
+              </Button>
+              <Button onClick={confirmDuplicate} loading={dupBusy} icon={<Copy className="w-4 h-4" />}>
+                Create batch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

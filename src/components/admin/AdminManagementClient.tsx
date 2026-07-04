@@ -60,6 +60,11 @@ export function AdminManagementClient({
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
+  // Custom password modal state
+  const [pwTarget, setPwTarget] = useState<AdminRow | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
   async function createAdmin(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || password.length < 8) {
@@ -114,23 +119,33 @@ export function AdminManagementClient({
     }
   }
 
-  async function resetPassword(admin: AdminRow) {
-    const newPassword = generatePassword(12);
-    setRowBusy(admin.id);
+  function openPwModal(admin: AdminRow) {
+    setPwValue("");
+    setPwTarget(admin);
+  }
+
+  async function savePassword() {
+    if (!pwTarget) return;
+    if (pwValue.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    setPwBusy(true);
     try {
-      const res = await fetch(`/api/admin/admins/${admin.id}`, {
+      const res = await fetch(`/api/admin/admins/${pwTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: newPassword }),
+        body: JSON.stringify({ password: pwValue }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      // Show the generated password so the super admin can share it.
-      toast.success(`New password for ${admin.name}: ${newPassword}`, { duration: 12000 });
+      toast.success(`Password updated for ${pwTarget.name}`);
+      setPwTarget(null);
+      setPwValue("");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not reset password");
+      toast.error(err instanceof Error ? err.message : "Could not set password");
     } finally {
-      setRowBusy(null);
+      setPwBusy(false);
     }
   }
 
@@ -291,10 +306,10 @@ export function AdminManagementClient({
 
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => resetPassword(admin)}
+                      onClick={() => openPwModal(admin)}
                       disabled={rowBusy === admin.id}
-                      title="Reset password"
-                      aria-label="Reset password"
+                      title="Set password"
+                      aria-label="Set password"
                       className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand-50 transition-colors disabled:opacity-40"
                     >
                       <KeyRound className="w-4 h-4" />
@@ -321,6 +336,48 @@ export function AdminManagementClient({
           </section>
         </motion.div>
       </main>
+
+      {/* Set-password modal */}
+      {pwTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !pwBusy && setPwTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Set password</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              Choose a new password for <span className="font-medium text-ink">{pwTarget.name}</span>.
+              Share it with them securely.
+            </p>
+            <div className="flex gap-2 items-start">
+              <div className="flex-1">
+                <Input
+                  id="set-pw"
+                  type="text"
+                  value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)}
+                  hint="Minimum 8 characters"
+                  autoFocus
+                />
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setPwValue(generatePassword(12))}>
+                Generate
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setPwTarget(null)} disabled={pwBusy}>
+                Cancel
+              </Button>
+              <Button onClick={savePassword} loading={pwBusy} icon={<KeyRound className="w-4 h-4" />}>
+                Save password
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

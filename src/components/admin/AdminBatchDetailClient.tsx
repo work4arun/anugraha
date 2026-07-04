@@ -26,6 +26,7 @@ import Papa from "papaparse";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { listContainer, listItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +82,8 @@ export function AdminBatchDetailClient({
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupName, setDupName] = useState("");
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(batch.logoUrl ?? null);
   const [search, setSearch] = useState("");
@@ -196,7 +199,7 @@ export function AdminBatchDetailClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Private copy created for this batch — opening editor");
-      router.push(`/admin/templates/${data.data.id}`);
+      router.push(`/admin/templates/${data.data.id}?returnTo=/admin/batches/${batch.id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not customise");
       setBusy(false);
@@ -220,10 +223,23 @@ export function AdminBatchDetailClient({
     }
   }
 
+  function openDuplicate() {
+    setDupName(`Copy of ${batch.name}`);
+    setDupOpen(true);
+  }
+
   async function duplicateBatch() {
+    if (!dupName.trim()) {
+      toast.error("Enter a name for the new batch");
+      return;
+    }
     setDuplicating(true);
     try {
-      const res = await fetch(`/api/admin/batches/${batch.id}/duplicate`, { method: "POST" });
+      const res = await fetch(`/api/admin/batches/${batch.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: dupName.trim() }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Duplicated — opening the new batch");
@@ -320,7 +336,7 @@ export function AdminBatchDetailClient({
             variant={batch.isTemplate ? "primary" : "ghost"}
             loading={duplicating}
             icon={<Copy className="w-4 h-4" />}
-            onClick={duplicateBatch}
+            onClick={openDuplicate}
           >
             {batch.isTemplate ? "Use / Duplicate" : "Duplicate"}
           </Button>
@@ -483,7 +499,7 @@ export function AdminBatchDetailClient({
                     {canManage && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
-                        onClick={() => router.push(`/admin/templates/${a.formTemplate.id}`)}
+                        onClick={() => router.push(`/admin/templates/${a.formTemplate.id}?returnTo=/admin/batches/${batch.id}`)}
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand-50"
                         aria-label="Edit form"
                         title="Edit this form"
@@ -642,6 +658,39 @@ export function AdminBatchDetailClient({
           </motion.div>
         </motion.div>
       </main>
+
+      {/* Duplicate + rename modal */}
+      {dupOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !duplicating && setDupOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Duplicate batch</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              Copies steps, logo and settings into a new batch you own. No students are copied.
+            </p>
+            <Input
+              id="dup-name-detail"
+              label="New batch name"
+              value={dupName}
+              onChange={(e) => setDupName(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDupOpen(false)} disabled={duplicating}>
+                Cancel
+              </Button>
+              <Button onClick={duplicateBatch} loading={duplicating} icon={<Copy className="w-4 h-4" />}>
+                Create batch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

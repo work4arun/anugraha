@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -60,6 +60,9 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function AdminTemplateEditorClient({ template }: { template: TemplateData }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Where "Back" should return to — the batch that opened this editor, or the templates list.
+  const returnTo = searchParams.get("returnTo") || "/admin/templates";
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState(template.name);
@@ -204,9 +207,9 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
       <header className="bg-white border-b border-surface-border sticky top-0 z-40">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
-            onClick={() => router.push("/admin/templates")}
+            onClick={() => router.push(returnTo)}
             className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-surface-subtle"
-            aria-label="Back to templates"
+            aria-label="Back"
           >
             <ArrowLeft className="w-5 h-5 text-ink" />
           </button>

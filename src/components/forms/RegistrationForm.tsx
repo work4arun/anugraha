@@ -47,6 +47,14 @@ export function RegistrationForm({
   const initialData: Record<string, unknown> = { ...(existingData ?? {}) };
   if (batchCourse && !initialData.course) initialData.course = batchCourse;
 
+  // Prefill any date field flagged `defaultToday` with today's date (ISO).
+  const today = new Date().toISOString().slice(0, 10);
+  for (const field of (schema as RegistrationSchema).fields) {
+    if (field.type === "date" && field.defaultToday && !initialData[field.id]) {
+      initialData[field.id] = today;
+    }
+  }
+
   const { register, control, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: initialData,
   });
@@ -177,12 +185,39 @@ export function RegistrationForm({
       );
     }
 
+    if (field.type === "date") {
+      return (
+        <motion.div key={field.id} variants={listItem}>
+          <Input
+            id={field.id}
+            label={field.label}
+            type="date"
+            readOnly={field.readOnly}
+            required={field.required}
+            hint={field.hint}
+            error={errors[field.id]?.message as string}
+            {...register(field.id, {
+              required: field.required ? `${field.label} is required` : false,
+            })}
+          />
+        </motion.div>
+      );
+    }
+
     return (
       <motion.div key={field.id} variants={listItem}>
         <Input
           id={field.id}
           label={field.label}
-          type={field.type === "tel" ? "tel" : "text"}
+          type={
+            field.type === "tel"
+              ? "tel"
+              : field.type === "email"
+              ? "email"
+              : field.type === "number"
+              ? "number"
+              : "text"
+          }
           inputMode={field.inputMode as React.InputHTMLAttributes<HTMLInputElement>["inputMode"]}
           maxLength={field.maxLength}
           placeholder={field.hint}
@@ -195,6 +230,20 @@ export function RegistrationForm({
             pattern: field.pattern
               ? { value: new RegExp(field.pattern), message: `Invalid ${field.label.toLowerCase()}` }
               : undefined,
+            // Phone fields: validate the last 10 digits form a valid Indian
+            // mobile (starts 6–9), tolerating spaces / +91 prefixes.
+            validate:
+              field.type === "tel"
+                ? (value: unknown) => {
+                    const raw = value == null ? "" : String(value).trim();
+                    if (!raw) return field.required ? `${field.label} is required` : true;
+                    const digits = raw.replace(/\D/g, "");
+                    return (
+                      /^[6-9]\d{9}$/.test(digits.slice(-10)) ||
+                      "Enter a valid 10-digit mobile number"
+                    );
+                  }
+                : undefined,
           })}
         />
       </motion.div>

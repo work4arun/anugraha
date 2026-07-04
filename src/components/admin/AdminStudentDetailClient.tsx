@@ -3,15 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { listContainer, listItem } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import { cn, generatePassword } from "@/lib/utils";
 import type { StudentProfile } from "@/types";
 
 interface Props {
@@ -29,6 +30,33 @@ interface Props {
 export function AdminStudentDetailClient({ profile, documents }: Props) {
   const router = useRouter();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwValue, setPwValue] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  async function saveStudentPassword() {
+    if (pwValue.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwValue }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Student password updated");
+      setPwOpen(false);
+      setPwValue("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset password");
+    } finally {
+      setPwBusy(false);
+    }
+  }
 
   async function reviewDoc(docId: string, status: "APPROVED" | "FLAGGED", note?: string) {
     setReviewingId(docId);
@@ -76,6 +104,14 @@ export function AdminStudentDetailClient({ profile, documents }: Props) {
             <p className="font-semibold text-ink truncate">{profile.name}</p>
             <p className="text-xs text-ink-muted">{profile.regNo}</p>
           </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setPwValue(""); setPwOpen(true); }}
+            icon={<KeyRound className="w-4 h-4" />}
+          >
+            Reset Password
+          </Button>
           <Button
             size="sm"
             variant="secondary"
@@ -172,9 +208,20 @@ export function AdminStudentDetailClient({ profile, documents }: Props) {
                           href={doc.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          title="View"
+                          aria-label="View document"
                           className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand-50"
                         >
                           <Eye className="w-4 h-4" />
+                        </a>
+                        <a
+                          href={doc.fileUrl}
+                          download={doc.label}
+                          title="Download"
+                          aria-label="Download document"
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand-50"
+                        >
+                          <Download className="w-4 h-4" />
                         </a>
                         {doc.reviewStatus !== "APPROVED" && (
                           <button
@@ -203,6 +250,48 @@ export function AdminStudentDetailClient({ profile, documents }: Props) {
           )}
         </motion.div>
       </main>
+
+      {/* Reset student password modal */}
+      {pwOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !pwBusy && setPwOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Reset student password</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              Set a new login password for <span className="font-medium text-ink">{profile.name}</span>{" "}
+              ({profile.regNo}). They can log in with it immediately.
+            </p>
+            <div className="flex gap-2 items-start">
+              <div className="flex-1">
+                <Input
+                  id="student-pw"
+                  type="text"
+                  value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)}
+                  hint="Minimum 6 characters"
+                  autoFocus
+                />
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setPwValue(generatePassword(10))}>
+                Generate
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setPwOpen(false)} disabled={pwBusy}>
+                Cancel
+              </Button>
+              <Button onClick={saveStudentPassword} loading={pwBusy} icon={<KeyRound className="w-4 h-4" />}>
+                Save password
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

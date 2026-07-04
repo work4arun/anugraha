@@ -1,8 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { signOut } from "next-auth/react";
+import { toast } from "sonner";
 import {
   Users,
   CheckCircle2,
@@ -16,11 +18,13 @@ import {
   GraduationCap,
   Upload,
   ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { listContainer, listItem, statCountUp } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +96,36 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
   const router = useRouter();
   const isSuperAdmin = data.adminRole === "SUPER_ADMIN";
 
+  const [pwOpen, setPwOpen] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  async function changePassword() {
+    if (!currentPw || newPw.length < 8) {
+      toast.error("Enter your current password and a new one of 8+ characters");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      toast.success("Password changed");
+      setPwOpen(false);
+      setCurrentPw("");
+      setNewPw("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change password");
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
   const stats = [
     { label: "Total Students",  value: data.totals.students,   icon: Users,         color: "bg-brand-50 text-brand" },
     { label: "Completed",       value: data.totals.completed,  icon: CheckCircle2,  color: "bg-success-light text-success" },
@@ -140,6 +174,14 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
                 Admins
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPwOpen(true)}
+              icon={<KeyRound className="w-4 h-4" />}
+            >
+              Password
+            </Button>
             <button
               onClick={() => signOut({ callbackUrl: "/admin/login" })}
               className="flex items-center gap-1 text-xs text-ink-muted hover:text-ink transition-colors min-h-[44px] px-2"
@@ -349,6 +391,47 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
           </motion.section>
         </motion.div>
       </main>
+
+      {/* Change my password modal */}
+      {pwOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !pwBusy && setPwOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-4">Change your password</h3>
+            <div className="flex flex-col gap-3">
+              <Input
+                id="cur-pw"
+                type="password"
+                label="Current password"
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                autoFocus
+              />
+              <Input
+                id="new-pw"
+                type="password"
+                label="New password"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                hint="Minimum 8 characters"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setPwOpen(false)} disabled={pwBusy}>
+                Cancel
+              </Button>
+              <Button onClick={changePassword} loading={pwBusy} icon={<KeyRound className="w-4 h-4" />}>
+                Update
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
