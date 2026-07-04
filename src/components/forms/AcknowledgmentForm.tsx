@@ -32,7 +32,6 @@ export function AcknowledgmentForm({
   existingStatus,
   existingSignatures,
   priorSignatures,
-  studentId,
   onComplete,
 }: Props) {
   const { clauses, acknowledgmentText, guaranteeDeclaration } = schema as AcknowledgmentSchema;

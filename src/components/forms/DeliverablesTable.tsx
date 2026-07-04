@@ -175,12 +175,10 @@ export function DeliverablesTable({
   formTemplateId,
   schema,
   signatoryRoles,
-  existingData,
   existingStatus,
   existingSignatures,
   priorSignatures,
   acknowledgedRowIds,
-  studentId,
   onComplete,
 }: Props) {
   const { rows, declaration, programmeHeader } = schema as DeliverableTableSchema;

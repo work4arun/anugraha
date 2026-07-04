@@ -64,7 +64,7 @@ export async function POST(
 
     // Ensure a unique slug within the batch.
     const usedSlugs = new Set(existing.map((a) => a.stepSlug));
-    let base = slugify(template.name) || `step-${nextOrder}`;
+    const base = slugify(template.name) || `step-${nextOrder}`;
     let stepSlug = base;
     let n = 2;
     while (usedSlugs.has(stepSlug)) stepSlug = `${base}-${n++}`;

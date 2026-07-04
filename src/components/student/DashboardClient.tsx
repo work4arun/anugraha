@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Badge } from "@/components/ui/Badge";
-import { fadeSlideUp, listContainer, listItem, progressBar } from "@/lib/motion";
+import { fadeSlideUp, listContainer, listItem } from "@/lib/motion";
 import type { StudentProfile, InductionStep, StepStatus } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ function StepCard({
   index: number;
   onContinue: (slug: string) => void;
 }) {
-  const { label, badge, Icon: StatusIcon } = statusConfig[step.status];
+  const { label, badge } = statusConfig[step.status];
   const StepIcon = stepTypeIcon[step.type] ?? FileText;
   const isCompleted = step.status === "completed";
 
@@ -255,7 +255,7 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
         {/* Steps list */}
         <div className="mb-6">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-1 mb-3">
-            {firstName}'s Induction Checklist
+            {firstName}&apos;s Induction Checklist
           </h2>
           <motion.div
             variants={listContainer}

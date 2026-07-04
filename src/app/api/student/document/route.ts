@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload
-    const { url, key } = await uploadFile(
+    const { url } = await uploadFile(
       buffer,
       file.name,
       file.type,

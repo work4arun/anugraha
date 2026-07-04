@@ -43,6 +43,10 @@ export default async function AdminBatchDetailPage({
 
   if (!batch) notFound();
 
+  // A regular (non-template) batch is private to its creator and super
+  // admins — other admins shouldn't even be able to view it via direct URL.
+  if (!batch.isTemplate && !canManageBatch(session, batch)) notFound();
+
   const agreements = await prisma.agreementTemplate.findMany({
     where: { batchId: params.id },
     orderBy: { createdAt: "desc" },

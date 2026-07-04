@@ -28,7 +28,6 @@ export function DocumentUploadForm({
   formTemplateId,
   schema,
   existingDocuments,
-  studentId,
   onComplete,
 }: Props) {
   const { documents } = schema as DocumentUploadSchema;

@@ -21,7 +21,6 @@ import {
   FileUp,
   CheckCircle2,
   AlertTriangle,
-  X,
   RefreshCw,
   File,
   Eye,
@@ -29,7 +28,7 @@ import {
 
 import { Button } from "@/components/ui/Button";
 import { cn, formatBytes } from "@/lib/utils";
-import { uploadSuccess, uploadOverlay } from "@/lib/motion";
+import { uploadSuccess } from "@/lib/motion";
 
 interface DocumentUploadProps {
   documentId: string;
@@ -61,7 +60,6 @@ export function DocumentUpload({
   maxSizeMB = 5,
   existingUrl,
   onUploadComplete,
-  onRemove,
   disabled = false,
   className,
 }: DocumentUploadProps) {

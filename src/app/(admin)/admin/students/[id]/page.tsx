@@ -28,10 +28,6 @@ export default async function AdminStudentDetailPage({
     where: { studentId: params.id },
   });
 
-  const sigs = await prisma.signature.findMany({
-    where: { studentId: params.id },
-  });
-
   return (
     <AdminStudentDetailClient
       profile={profile}

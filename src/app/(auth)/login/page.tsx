@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { LogIn, GraduationCap, Shield } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AnimatedBackground } from "@/components/ui/AnimatedBackground";
-import { fadeSlideUp, listContainer, listItem } from "@/lib/motion";
+import { listContainer, listItem } from "@/lib/motion";
 
 // ── Schema ─────────────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ export default function LoginPage() {
             className="text-center text-xs text-ink-muted mt-5 leading-relaxed px-4"
           >
             Your login credentials were issued by the Admissions Office.
-            If you need help, contact your institution's helpdesk.
+            If you need help, contact your institution&apos;s helpdesk.
           </motion.p>
 
           {/* Admin link */}

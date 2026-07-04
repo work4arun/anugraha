@@ -136,7 +136,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
                 Amazing work, {firstName} — all steps complete! 🎉
               </p>
               <p className="text-xs text-success/80 mt-0.5">
-                Review everything below and tap "Confirm & Generate PDF"
+                Review everything below and tap &quot;Confirm &amp; Generate PDF&quot;
               </p>
             </div>
           </motion.div>

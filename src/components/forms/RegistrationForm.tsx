@@ -35,12 +35,11 @@ export function RegistrationForm({
   existingData,
   existingSignatures,
   priorSignatures,
-  studentId,
   batchCourse,
   onComplete,
 }: Props) {
   const { fields, declaration } = schema as RegistrationSchema;
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [signatures, setSignatures] = useState<Record<string, string>>(existingSignatures);
 
@@ -61,7 +60,6 @@ export function RegistrationForm({
   });
 
   const watchedValues = watch();
-  const transportRequired = watchedValues["transport_required"] as boolean;
 
   // ── Autosave ────────────────────────────────────────────────────────────
 

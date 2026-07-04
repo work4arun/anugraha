@@ -10,7 +10,6 @@ import { AcknowledgmentForm } from "@/components/forms/AcknowledgmentForm";
 import { DeliverablesTable } from "@/components/forms/DeliverablesTable";
 import { DocumentUploadForm } from "@/components/forms/DocumentUploadForm";
 import { StepBar } from "@/components/ui/StepBar";
-import { fadeSlideUp } from "@/lib/motion";
 
 interface StepData {
   assignment: {
