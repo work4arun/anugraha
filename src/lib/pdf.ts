@@ -145,6 +145,7 @@ function buildPdfHtml(student: {
     name: string;
     course: string;
     academicYear: string;
+    logoUrl?: string | null;
     institution: { fullName: string; code: string };
     formAssignments: Array<{
       order: number;
@@ -181,6 +182,17 @@ function buildPdfHtml(student: {
       align-items: center;
       padding: 40px 0 30px;
       border-bottom: 3px solid #4E7C1E;
+    }
+    /* Institution logos vary per batch — wide banners, square marks, or tall
+       crests. Bound both dimensions and let the image scale to fit within,
+       preserving its own aspect ratio (no crop, no distortion). */
+    .cover-logo {
+      max-height: 90px;
+      max-width: 460px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      margin-bottom: 20px;
     }
     .cover h1 { font-size: 22px; color: #4E7C1E; margin-bottom: 4px; }
     .cover h2 { font-size: 14px; color: #555; font-weight: normal; margin-bottom: 20px; }
@@ -255,6 +267,7 @@ function buildPdfHtml(student: {
 
   <!-- ─── COVER PAGE ──────────────────────────────────────────────────────── -->
   <div class="cover">
+    ${student.batch.logoUrl ? `<img class="cover-logo" src="${student.batch.logoUrl}" alt="Institution logo" />` : ""}
     <h1>Rathinam Anugraha 2026</h1>
     <h2>Anugraha 2026 — Student Induction Record</h2>
     <h2 style="font-size:12px;margin-top:-14px;">${student.batch.institution.fullName}</h2>

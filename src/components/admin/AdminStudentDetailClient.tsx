@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
@@ -37,6 +37,31 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
   const [pwBusy, setPwBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(pdfUrl ?? null);
+
+  // Reset-form confirmation state
+  const [resetTarget, setResetTarget] = useState<StudentProfile["steps"][number] | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+
+  async function confirmResetForm() {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}/reset-form`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formTemplateId: resetTarget.formTemplateId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`"${resetTarget.name}" reopened for the student`);
+      setResetTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset form");
+    } finally {
+      setResetBusy(false);
+    }
+  }
 
   async function saveStudentPassword() {
     if (pwValue.length < 6) {
@@ -208,6 +233,16 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
                     <Badge variant={step.status === "completed" ? "success" : "muted"}>
                       {step.status === "completed" ? "Done" : step.status.replace("_", " ")}
                     </Badge>
+                    {step.status === "completed" && (
+                      <button
+                        onClick={() => setResetTarget(step)}
+                        title="Reset form — let the student correct and resubmit"
+                        aria-label="Reset form"
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light shrink-0"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -326,6 +361,45 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
               </Button>
               <Button onClick={saveStudentPassword} loading={pwBusy} icon={<KeyRound className="w-4 h-4" />}>
                 Save password
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset form confirmation modal */}
+      {resetTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !resetBusy && setResetTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <RotateCcw className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Reset form</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This reopens <span className="font-medium text-ink">{resetTarget.name}</span> for{" "}
+              <span className="font-medium text-ink">{profile.name}</span> to correct and resubmit.
+              Their typed answers are kept, but their signature for this form is cleared so they
+              re-sign the corrected version.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setResetTarget(null)} disabled={resetBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmResetForm}
+                loading={resetBusy}
+                icon={<RotateCcw className="w-4 h-4" />}
+              >
+                Reset form
               </Button>
             </div>
           </div>

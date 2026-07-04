@@ -120,7 +120,7 @@ export function InductionStepClient({ stepData }: { stepData: StepData }) {
             <img
               src={stepData.logoUrl}
               alt="College logo"
-              className="h-8 w-auto max-w-[110px] object-contain shrink-0"
+              className="max-h-11 max-w-[190px] w-auto object-contain shrink-0"
             />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center shrink-0">

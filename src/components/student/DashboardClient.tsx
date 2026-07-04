@@ -144,7 +144,7 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
               <img
                 src={profile.batch.logoUrl}
                 alt="College logo"
-                className="h-8 w-auto max-w-[120px] object-contain"
+                className="max-h-11 max-w-[200px] w-auto object-contain"
               />
             ) : (
               <div className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center">

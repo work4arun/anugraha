@@ -405,10 +405,12 @@ export function AdminBatchDetailClient({
                 <CardTitle>College Logo</CardTitle>
               </CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-surface-border bg-surface-muted flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-full sm:w-auto sm:min-w-[180px] sm:max-w-xs min-h-[96px] p-3 rounded-2xl border-2 border-dashed border-surface-border bg-surface-muted flex items-center justify-center overflow-hidden shrink-0">
                   {logoUrl ? (
+                    // Logos vary in shape per batch (wide, square, tall) — contain
+                    // within generous bounds so any aspect ratio displays cleanly.
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoUrl} alt="Batch logo" className="w-full h-full object-contain p-2" />
+                    <img src={logoUrl} alt="Batch logo" className="max-h-32 max-w-full w-auto h-auto object-contain" />
                   ) : (
                     <span className="text-xs text-ink-faint text-center px-2">No logo yet</span>
                   )}
