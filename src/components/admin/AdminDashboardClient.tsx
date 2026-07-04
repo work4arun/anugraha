@@ -15,6 +15,7 @@ import {
   Settings,
   GraduationCap,
   Upload,
+  ShieldCheck,
 } from "lucide-react";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -89,6 +90,7 @@ function StatCard({
 
 export function AdminDashboardClient({ data }: { data: AdminData }) {
   const router = useRouter();
+  const isSuperAdmin = data.adminRole === "SUPER_ADMIN";
 
   const stats = [
     { label: "Total Students",  value: data.totals.students,   icon: Users,         color: "bg-brand-50 text-brand" },
@@ -128,6 +130,16 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
             >
               Templates
             </Button>
+            {isSuperAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/admin/admins")}
+                icon={<ShieldCheck className="w-4 h-4" />}
+              >
+                Admins
+              </Button>
+            )}
             <button
               onClick={() => signOut({ callbackUrl: "/admin/login" })}
               className="flex items-center gap-1 text-xs text-ink-muted hover:text-ink transition-colors min-h-[44px] px-2"
@@ -322,6 +334,17 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
               >
                 Batch Reports
               </Button>
+              {isSuperAdmin && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => router.push("/admin/admins")}
+                  icon={<ShieldCheck className="w-5 h-5" />}
+                >
+                  Manage Admins
+                </Button>
+              )}
             </div>
           </motion.section>
         </motion.div>

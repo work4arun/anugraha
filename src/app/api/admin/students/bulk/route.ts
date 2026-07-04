@@ -21,6 +21,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { generatePassword } from "@/lib/utils";
+import { canManageBatch } from "@/lib/authz";
 
 interface CsvRow {
   [key: string]: string | undefined;
@@ -49,8 +50,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "students array required" }, { status: 400 });
   }
 
-  // Build batch lookups (by id and by name).
-  const batches = await prisma.batch.findMany({ select: { id: true, name: true } });
+  // Build batch lookups (by id and by name) — restricted to batches this admin
+  // may manage, so nobody can import students into another admin's batch.
+  const allBatches = await prisma.batch.findMany({
+    select: { id: true, name: true, createdById: true },
+  });
+  const batches = allBatches.filter((b) => canManageBatch(session, b));
   const byId = new Map(batches.map((b) => [b.id, b.id]));
   const byName = new Map(batches.map((b) => [b.name.trim().toLowerCase(), b.id]));
 

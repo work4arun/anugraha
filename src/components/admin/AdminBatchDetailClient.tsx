@@ -17,6 +17,7 @@ import {
   Copy,
   Trash2,
   Plus,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -66,7 +67,13 @@ const statusConfig: Record<StudentStatus, { label: string; variant: "success" | 
   LOCKED:      { label: "Locked",      variant: "default" },
 };
 
-export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
+export function AdminBatchDetailClient({
+  batch,
+  canManage,
+}: {
+  batch: BatchData;
+  canManage: boolean;
+}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -291,6 +298,12 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
             <p className="text-base font-semibold text-ink truncate">{batch.name}</p>
             <p className="text-xs text-ink-muted">{batch.institution.fullName}</p>
           </div>
+          {!canManage && (
+            <Badge variant="muted">
+              <Lock className="w-3 h-3 mr-1 inline" />
+              View only
+            </Badge>
+          )}
           <Badge variant={batch.isActive ? "success" : "muted"} dot>
             {batch.isActive ? "Active" : "Inactive"}
           </Badge>
@@ -304,6 +317,19 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
           animate="visible"
           className="flex flex-col gap-6"
         >
+          {!canManage && (
+            <motion.div
+              variants={listItem}
+              className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-light px-4 py-3"
+            >
+              <Lock className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+              <p className="text-sm text-ink">
+                This batch was created by another admin. You can view its data and export the
+                roster, but editing is restricted to its creator and super admins.
+              </p>
+            </motion.div>
+          )}
+
           {/* Stats row */}
           <motion.div variants={listItem} className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
@@ -356,16 +382,18 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
                     className="sr-only"
                     onChange={handleLogoUpload}
                   />
-                  <div className="flex gap-2 mt-3">
-                    <Button size="sm" loading={logoBusy} icon={<Upload className="w-4 h-4" />} onClick={() => logoInputRef.current?.click()}>
-                      {logoUrl ? "Replace logo" : "Upload logo"}
-                    </Button>
-                    {logoUrl && (
-                      <Button size="sm" variant="ghost" icon={<Trash2 className="w-4 h-4" />} onClick={removeLogo} disabled={logoBusy}>
-                        Remove
+                  {canManage && (
+                    <div className="flex gap-2 mt-3">
+                      <Button size="sm" loading={logoBusy} icon={<Upload className="w-4 h-4" />} onClick={() => logoInputRef.current?.click()}>
+                        {logoUrl ? "Replace logo" : "Upload logo"}
                       </Button>
-                    )}
-                  </div>
+                      {logoUrl && (
+                        <Button size="sm" variant="ghost" icon={<Trash2 className="w-4 h-4" />} onClick={removeLogo} disabled={logoBusy}>
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
@@ -377,11 +405,13 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle>Induction Steps for this Batch</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="ghost" icon={<Plus className="w-4 h-4" />} onClick={openAssign}>
-                      Assign form
-                    </Button>
-                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" icon={<Plus className="w-4 h-4" />} onClick={openAssign}>
+                        Assign form
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardHeader>
 
@@ -418,6 +448,7 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
                     </span>
                     <span className="text-sm text-ink flex-1 min-w-0 truncate">{a.formTemplate.name}</span>
                     <Badge variant="muted" className="text-xs hidden sm:inline-flex">{a.formTemplate.type.replace(/_/g, " ")}</Badge>
+                    {canManage && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => router.push(`/admin/templates/${a.formTemplate.id}`)}
@@ -446,6 +477,7 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                    )}
                   </div>
                 ))}
                 {batch.formAssignments.length === 0 && (
@@ -471,21 +503,25 @@ export function AdminBatchDetailClient({ batch }: { batch: BatchData }) {
               >
                 Export CSV
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx"
-                className="sr-only"
-                onChange={handleCsvUpload}
-              />
-              <Button
-                size="sm"
-                icon={<Upload className="w-4 h-4" />}
-                loading={uploading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Bulk Import
-              </Button>
+              {canManage && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx"
+                    className="sr-only"
+                    onChange={handleCsvUpload}
+                  />
+                  <Button
+                    size="sm"
+                    icon={<Upload className="w-4 h-4" />}
+                    loading={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Bulk Import
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* CSV format hint */}

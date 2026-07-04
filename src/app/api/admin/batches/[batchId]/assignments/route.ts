@@ -13,6 +13,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
+import { canManageBatch } from "@/lib/authz";
 
 export async function POST(
   req: NextRequest,
@@ -38,6 +39,12 @@ export async function POST(
     ]);
 
     if (!batch) return NextResponse.json({ success: false, error: "Batch not found" }, { status: 404 });
+    if (!canManageBatch(session, batch)) {
+      return NextResponse.json(
+        { success: false, error: "You can only edit batches you created" },
+        { status: 403 }
+      );
+    }
     if (!template) return NextResponse.json({ success: false, error: "Template not found" }, { status: 404 });
 
     if (existing.some((a) => a.formTemplateId === formTemplateId)) {
@@ -99,9 +106,18 @@ export async function DELETE(
     return NextResponse.json({ success: false, error: "assignmentId required" }, { status: 400 });
   }
 
-  const assignment = await prisma.batchFormAssignment.findUnique({ where: { id: assignmentId } });
+  const assignment = await prisma.batchFormAssignment.findUnique({
+    where: { id: assignmentId },
+    include: { batch: { select: { createdById: true } } },
+  });
   if (!assignment || assignment.batchId !== params.batchId) {
     return NextResponse.json({ success: false, error: "Assignment not found" }, { status: 404 });
+  }
+  if (!canManageBatch(session, assignment.batch)) {
+    return NextResponse.json(
+      { success: false, error: "You can only edit batches you created" },
+      { status: 403 }
+    );
   }
 
   await prisma.batchFormAssignment.delete({ where: { id: assignmentId } });

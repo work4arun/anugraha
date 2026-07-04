@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect, notFound } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { canManageBatch } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { AdminBatchDetailClient } from "@/components/admin/AdminBatchDetailClient";
 import type { Metadata } from "next";
@@ -44,6 +45,7 @@ export default async function AdminBatchDetailPage({
 
   return (
     <AdminBatchDetailClient
+      canManage={canManageBatch(session, batch)}
       batch={{
         id: batch.id,
         name: batch.name,

@@ -14,6 +14,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadFile } from "@/lib/storage";
+import { canManageBatch } from "@/lib/authz";
 
 const MIME_EXT: Record<string, string> = {
   "image/png": "png",
@@ -65,6 +66,12 @@ export async function POST(
     if (!batch) {
       return NextResponse.json({ success: false, error: "Batch not found" }, { status: 404 });
     }
+    if (!canManageBatch(session, batch)) {
+      return NextResponse.json(
+        { success: false, error: "You can only edit batches you created" },
+        { status: 403 }
+      );
+    }
 
     const { url } = await uploadFile(buffer, `logo.${ext}`, mime, batchId, "logos");
 
@@ -95,6 +102,17 @@ export async function DELETE(
   const session = await getServerSession(authOptions);
   if (!session || session.user.userType !== "admin") {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const batch = await prisma.batch.findUnique({ where: { id: params.batchId } });
+  if (!batch) {
+    return NextResponse.json({ success: false, error: "Batch not found" }, { status: 404 });
+  }
+  if (!canManageBatch(session, batch)) {
+    return NextResponse.json(
+      { success: false, error: "You can only edit batches you created" },
+      { status: 403 }
+    );
   }
 
   await prisma.batch.update({

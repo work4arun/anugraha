@@ -93,12 +93,19 @@ model Batch {
   logoUrl       String?     // per-batch college logo (overrides institution logo)
   isActive      Boolean     @default(true)
   inductionDeadline DateTime?
+
+  // Ownership: the admin who created this batch. Only this admin (or a
+  // SUPER_ADMIN) may edit or delete it. Nullable for pre-existing batches.
+  createdById   String?
+  createdBy     Admin?      @relation("BatchCreator", fields: [createdById], references: [id])
+
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   students        Student[]
   formAssignments BatchFormAssignment[]
 
+  @@index([createdById])
   @@map("batches")
 }
 
@@ -341,7 +348,11 @@ model Admin {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  auditLogs     AuditLog[]   @relation("AdminAuditLogs")
+  // The admin who created this account (a SUPER_ADMIN). Null for the seed/root admin.
+  createdById   String?
+
+  auditLogs      AuditLog[]  @relation("AdminAuditLogs")
+  createdBatches Batch[]     @relation("BatchCreator")
 
   @@map("admins")
 }

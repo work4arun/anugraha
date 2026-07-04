@@ -55,12 +55,18 @@ async function main() {
 
   // ── Super Admin ───────────────────────────────────────────────────────────
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@rathinam.in";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "Admin@1234";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "bT7#kQ2!wLp9$xZr";
   const adminHash = await bcrypt.hash(adminPassword, 12);
 
   await prisma.admin.upsert({
     where: { email: adminEmail },
-    update: {},
+    // Re-apply the password/role on reseed so the super-admin credentials stay
+    // in sync with this seed (or SEED_ADMIN_PASSWORD) even if the row exists.
+    update: {
+      passwordHash: adminHash,
+      role: "SUPER_ADMIN",
+      isActive: true,
+    },
     create: {
       name: "Super Admin",
       email: adminEmail,

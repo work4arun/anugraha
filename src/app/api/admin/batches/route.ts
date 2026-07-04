@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
         department: body.department?.trim() || null,
         academicYear,
         isActive: body.isActive ?? true,
+        // Record ownership: only this admin (or a SUPER_ADMIN) can edit it later.
+        createdById: session.user.id,
       },
     });
 

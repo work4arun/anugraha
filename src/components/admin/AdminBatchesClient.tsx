@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { signOut } from "next-auth/react";
-import { ArrowLeft, Plus, Users, FileText, GraduationCap, ChevronRight, LogOut } from "lucide-react";
+import { ArrowLeft, Plus, Users, FileText, ChevronRight, LogOut, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -21,6 +21,8 @@ interface Batch {
   institutionCode: string;
   studentCount: number;
   formCount: number;
+  ownerName: string | null;
+  canManage: boolean;
 }
 
 export function AdminBatchesClient({
@@ -90,6 +92,12 @@ export function AdminBatchesClient({
                       {batch.isActive ? "Active" : "Inactive"}
                     </Badge>
                     <Badge variant="default">{batch.institutionCode}</Badge>
+                    {!batch.canManage && (
+                      <Badge variant="muted">
+                        <Lock className="w-3 h-3 mr-1 inline" />
+                        View only
+                      </Badge>
+                    )}
                   </div>
                   <h3 className="font-semibold text-ink">{batch.name}</h3>
                   <p className="text-sm text-ink-muted">{batch.course} · {batch.academicYear}</p>
@@ -106,6 +114,9 @@ export function AdminBatchesClient({
                   <FileText className="w-3.5 h-3.5" />
                   {batch.formCount} forms
                 </span>
+                {batch.ownerName && (
+                  <span className="ml-auto text-ink-faint">by {batch.ownerName}</span>
+                )}
               </div>
             </motion.div>
           ))}
