@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText, RotateCcw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
@@ -41,6 +41,30 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
   // Reset-form confirmation state
   const [resetTarget, setResetTarget] = useState<StudentProfile["steps"][number] | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
+
+  // Reset-all-forms confirmation state
+  const [resetAllOpen, setResetAllOpen] = useState(false);
+  const [resetAllBusy, setResetAllBusy] = useState(false);
+
+  const submittedStepCount = profile.steps.filter((s) => s.status === "completed").length;
+
+  async function confirmResetAllForms() {
+    setResetAllBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}/reset-all`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("All forms reopened for the student");
+      setResetAllOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset forms");
+    } finally {
+      setResetAllBusy(false);
+    }
+  }
 
   async function confirmResetForm() {
     if (!resetTarget) return;
@@ -160,6 +184,16 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
           >
             Reset Password
           </Button>
+          {submittedStepCount > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setResetAllOpen(true)}
+              icon={<Undo2 className="w-4 h-4" />}
+            >
+              Reset All Forms
+            </Button>
+          )}
           {currentPdfUrl && (
             <Button
               size="sm"
@@ -400,6 +434,45 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
                 icon={<RotateCcw className="w-4 h-4" />}
               >
                 Reset form
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset all forms confirmation modal */}
+      {resetAllOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !resetAllBusy && setResetAllOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <Undo2 className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Reset all forms</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This reopens all {submittedStepCount} submitted form{submittedStepCount === 1 ? "" : "s"} for{" "}
+              <span className="font-medium text-ink">{profile.name}</span> so they can modify anything,
+              undoing final submission. Typed answers are kept, but all signatures for this student
+              are cleared so corrected forms are re-signed.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setResetAllOpen(false)} disabled={resetAllBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmResetAllForms}
+                loading={resetAllBusy}
+                icon={<Undo2 className="w-4 h-4" />}
+              >
+                Reset all forms
               </Button>
             </div>
           </div>

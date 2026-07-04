@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
@@ -67,7 +68,20 @@ export async function POST(req: NextRequest) {
         let n = 2;
         while (usedSlugs.has(stepSlug)) stepSlug = `${base}-${n++}`;
         usedSlugs.add(stepSlug);
-        steps.push({ formTemplateId: t.id, order, stepSlug, required: true });
+        // Give the batch its own private copy of the template so later edits to
+        // this batch's steps never modify the shared library template.
+        const clone = await prisma.formTemplate.create({
+          data: {
+            name: t.name,
+            description: t.description,
+            type: t.type,
+            schema: t.schema as Prisma.InputJsonValue,
+            signatoryRoles: t.signatoryRoles as Prisma.InputJsonValue,
+            createdBy: session.user.id,
+            isLibrary: false,
+          },
+        });
+        steps.push({ formTemplateId: clone.id, order, stepSlug, required: true });
         order++;
       }
     }

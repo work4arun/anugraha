@@ -62,7 +62,10 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  // Only show reusable library templates — batch-private copies (isLibrary=false)
+  // are edited from within their batch, not from the shared library list.
   const templates = await prisma.formTemplate.findMany({
+    where: { isLibrary: true },
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { batchAssignments: true } } },
   });

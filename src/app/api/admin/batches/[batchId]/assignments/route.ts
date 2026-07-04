@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
@@ -35,7 +36,10 @@ export async function POST(
     const [batch, template, existing] = await Promise.all([
       prisma.batch.findUnique({ where: { id: batchId } }),
       prisma.formTemplate.findUnique({ where: { id: formTemplateId } }),
-      prisma.batchFormAssignment.findMany({ where: { batchId } }),
+      prisma.batchFormAssignment.findMany({
+        where: { batchId },
+        include: { formTemplate: { select: { name: true } } },
+      }),
     ]);
 
     if (!batch) return NextResponse.json({ success: false, error: "Batch not found" }, { status: 404 });
@@ -47,9 +51,11 @@ export async function POST(
     }
     if (!template) return NextResponse.json({ success: false, error: "Template not found" }, { status: 404 });
 
-    if (existing.some((a) => a.formTemplateId === formTemplateId)) {
+    // Each batch keeps its own copy of a template, so compare by name (the
+    // batch's existing steps point at private clones, not the library id).
+    if (existing.some((a) => a.formTemplate.name === template.name)) {
       return NextResponse.json(
-        { success: false, error: "This template is already assigned to the batch" },
+        { success: false, error: "A step with this name is already in the batch" },
         { status: 409 }
       );
     }
@@ -63,10 +69,24 @@ export async function POST(
     let n = 2;
     while (usedSlugs.has(stepSlug)) stepSlug = `${base}-${n++}`;
 
+    // Clone the library template into a batch-private copy so editing this
+    // batch's step never modifies the shared template (or other batches).
+    const clone = await prisma.formTemplate.create({
+      data: {
+        name: template.name,
+        description: template.description,
+        type: template.type,
+        schema: template.schema as Prisma.InputJsonValue,
+        signatoryRoles: template.signatoryRoles as Prisma.InputJsonValue,
+        createdBy: session.user.id,
+        isLibrary: false,
+      },
+    });
+
     const assignment = await prisma.batchFormAssignment.create({
       data: {
         batchId,
-        formTemplateId,
+        formTemplateId: clone.id,
         order: nextOrder,
         stepSlug,
         required: body.required ?? true,

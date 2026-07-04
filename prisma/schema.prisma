@@ -192,6 +192,11 @@ model FormTemplate {
   signatoryRoles Json         @default("[{\"role\":\"student\",\"label\":\"Student Signature\"},{\"role\":\"parent\",\"label\":\"Parent / Guardian Signature\"}]")
   version     Int             @default(1)
   isActive    Boolean         @default(true)
+  // Library templates are the reusable building blocks shown in the Templates
+  // page and picked when building a batch. When a batch is created/duplicated,
+  // or a template is assigned to it, a batch-private copy is made with
+  // isLibrary=false so edits to a batch's steps never touch the library.
+  isLibrary   Boolean         @default(true)
   createdBy   String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt

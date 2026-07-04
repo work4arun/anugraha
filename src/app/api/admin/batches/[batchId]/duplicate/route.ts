@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -28,7 +29,12 @@ export async function POST(
   try {
     const source = await prisma.batch.findUnique({
       where: { id: params.batchId },
-      include: { formAssignments: { orderBy: { order: "asc" } } },
+      include: {
+        formAssignments: {
+          orderBy: { order: "asc" },
+          include: { formTemplate: true },
+        },
+      },
     });
     if (!source) {
       return NextResponse.json({ success: false, error: "Batch not found" }, { status: 404 });
@@ -44,9 +50,33 @@ export async function POST(
 
     const newName = overrideName ?? `Copy of ${source.name}`;
 
-    // Create the new batch and copy its step assignments in a single nested
-    // write. Prisma wraps this in one atomic statement — no interactive
-    // transaction, which is more robust over a pooled (pgbouncer) connection.
+    // Deep-copy each form template so the new batch is fully independent: its
+    // steps must be editable without ever modifying the original templates
+    // (which the source batch and others may still use). Copying only the
+    // assignments would leave both batches pointing at the same shared
+    // template, so an edit "here" would change the original "there".
+    const steps: Array<{ formTemplateId: string; order: number; stepSlug: string; required: boolean }> = [];
+    for (const a of source.formAssignments) {
+      const t = a.formTemplate;
+      const clone = await prisma.formTemplate.create({
+        data: {
+          name: t.name,
+          description: t.description,
+          type: t.type,
+          schema: t.schema as Prisma.InputJsonValue,
+          signatoryRoles: t.signatoryRoles as Prisma.InputJsonValue,
+          createdBy: session.user.id,
+          isLibrary: false,
+        },
+      });
+      steps.push({
+        formTemplateId: clone.id,
+        order: a.order,
+        stepSlug: a.stepSlug,
+        required: a.required,
+      });
+    }
+
     const created = await prisma.batch.create({
       data: {
         institutionId: source.institutionId,
@@ -60,14 +90,7 @@ export async function POST(
         // The copy is always a normal batch owned by whoever duplicated it.
         isTemplate: false,
         createdById: session.user.id,
-        formAssignments: {
-          create: source.formAssignments.map((a) => ({
-            formTemplateId: a.formTemplateId,
-            order: a.order,
-            stepSlug: a.stepSlug,
-            required: a.required,
-          })),
-        },
+        formAssignments: { create: steps },
       },
     });
 

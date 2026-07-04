@@ -41,6 +41,9 @@ export async function POST(
         schema: source.schema as Prisma.InputJsonValue,
         signatoryRoles: source.signatoryRoles as Prisma.InputJsonValue,
         createdBy: session.user.id,
+        // A clone tied to a specific batch assignment is batch-private, so it
+        // stays out of the shared library list.
+        isLibrary: body.assignmentId ? false : true,
       },
     });
 
