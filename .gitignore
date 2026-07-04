@@ -16,8 +16,9 @@ build/
 .env.local
 .env.*.local
 
-# Uploads (local dev)
-uploads/
+# Uploads (local dev) — anchored to repo root so it does NOT also match
+# the source route dir src/app/api/uploads/ (which must be committed).
+/uploads/
 
 # Logs
 *.log
