@@ -52,6 +52,7 @@ export default async function AdminBatchDetailPage({
         course: batch.course,
         academicYear: batch.academicYear,
         isActive: batch.isActive,
+        isTemplate: batch.isTemplate,
         logoUrl: batch.logoUrl,
         institution: {
           code: batch.institution.code,

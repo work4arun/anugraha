@@ -94,6 +94,10 @@ model Batch {
   isActive      Boolean     @default(true)
   inductionDeadline DateTime?
 
+  // A template ("sample") batch is a reusable starting point that every admin
+  // can see and duplicate. Templates themselves are managed by super admins.
+  isTemplate    Boolean     @default(false)
+
   // Ownership: the admin who created this batch. Only this admin (or a
   // SUPER_ADMIN) may edit or delete it. Nullable for pre-existing batches.
   createdById   String?
@@ -106,6 +110,7 @@ model Batch {
   formAssignments BatchFormAssignment[]
 
   @@index([createdById])
+  @@index([isTemplate])
   @@map("batches")
 }
 

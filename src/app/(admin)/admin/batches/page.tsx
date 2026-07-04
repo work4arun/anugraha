@@ -33,6 +33,7 @@ export default async function AdminBatchesPage() {
         course: b.course,
         academicYear: b.academicYear,
         isActive: b.isActive,
+        isTemplate: b.isTemplate,
         institutionCode: b.institution.code,
         studentCount: b._count.students,
         formCount: b._count.formAssignments,

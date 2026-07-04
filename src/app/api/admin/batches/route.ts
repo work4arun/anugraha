@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
+import { isSuperAdmin } from "@/lib/authz";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
       department?: string;
       academicYear?: string;
       isActive?: boolean;
+      isTemplate?: boolean;
       templateIds?: string[];
     };
 
@@ -52,6 +54,8 @@ export async function POST(req: NextRequest) {
         department: body.department?.trim() || null,
         academicYear,
         isActive: body.isActive ?? true,
+        // Only super admins may create shared sample templates.
+        isTemplate: isSuperAdmin(session) ? body.isTemplate ?? false : false,
         // Record ownership: only this admin (or a SUPER_ADMIN) can edit it later.
         createdById: session.user.id,
       },

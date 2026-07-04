@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canManageBatch } from "@/lib/authz";
+import { canManageBatch, isSuperAdmin } from "@/lib/authz";
 
 export async function PATCH(
   req: NextRequest,
@@ -39,6 +39,7 @@ export async function PATCH(
       department?: string | null;
       academicYear?: string;
       isActive?: boolean;
+      isTemplate?: boolean;
     };
 
     const data: Record<string, unknown> = {};
@@ -48,6 +49,9 @@ export async function PATCH(
     if (typeof body.academicYear === "string" && body.academicYear.trim())
       data.academicYear = body.academicYear.trim();
     if (typeof body.isActive === "boolean") data.isActive = body.isActive;
+    // Only super admins may flag/unflag a batch as a shared sample template.
+    if (typeof body.isTemplate === "boolean" && isSuperAdmin(session))
+      data.isTemplate = body.isTemplate;
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });

@@ -55,10 +55,10 @@ async function main() {
 
   // ── Super Admin ───────────────────────────────────────────────────────────
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@rathinam.in";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "bT7#kQ2!wLp9$xZr";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "Admin@1234";
   const adminHash = await bcrypt.hash(adminPassword, 12);
 
-  await prisma.admin.upsert({
+  const superAdmin = await prisma.admin.upsert({
     where: { email: adminEmail },
     // Re-apply the password/role on reseed so the super-admin credentials stay
     // in sync with this seed (or SEED_ADMIN_PASSWORD) even if the row exists.
@@ -551,6 +551,46 @@ async function main() {
   }
 
   console.log(`  ✓ Batch form assignments: ${assignments.length}`);
+
+  // ── Sample Template Batch ─────────────────────────────────────────────────
+  // A reusable "sample" every admin can see and duplicate. Owned by the super
+  // admin; only they can edit the template itself.
+  const sampleBatch = await prisma.batch.upsert({
+    where: { id: "batch-sample-template" },
+    update: {
+      isTemplate: true,
+      createdById: superAdmin.id,
+    },
+    create: {
+      id: "batch-sample-template",
+      institutionId: rtc.id,
+      name: "Sample Induction Batch (Template)",
+      course: "B.E. / B.Tech",
+      department: "All Departments",
+      academicYear: "2025-26",
+      isActive: true,
+      isTemplate: true,
+      createdById: superAdmin.id,
+    },
+  });
+
+  const sampleAssignments = [
+    { id: "bfa-sample-reg",          formTemplateId: registrationTemplate.id, order: 1, stepSlug: "registration" },
+    { id: "bfa-sample-conduct",      formTemplateId: conductTemplate.id,      order: 2, stepSlug: "code-of-conduct" },
+    { id: "bfa-sample-placement",    formTemplateId: placementTemplate.id,    order: 3, stepSlug: "placement-undertaking" },
+    { id: "bfa-sample-deliverables", formTemplateId: deliverablesTemplate.id, order: 4, stepSlug: "deliverables" },
+    { id: "bfa-sample-documents",    formTemplateId: documentTemplate.id,     order: 5, stepSlug: "documents" },
+  ];
+
+  for (const a of sampleAssignments) {
+    await prisma.batchFormAssignment.upsert({
+      where: { id: a.id },
+      update: {},
+      create: { ...a, batchId: sampleBatch.id, required: true },
+    });
+  }
+
+  console.log(`  ✓ Sample template batch: ${sampleBatch.name} (${sampleAssignments.length} steps)`);
 
   // ── Test Student ──────────────────────────────────────────────────────────
   const studentPasswordHash = await bcrypt.hash("Test@1234", 12);

@@ -18,6 +18,7 @@ import {
   Trash2,
   Plus,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -48,6 +49,7 @@ interface BatchData {
   course: string;
   academicYear: string;
   isActive: boolean;
+  isTemplate: boolean;
   logoUrl?: string | null;
   institution: { code: string; fullName: string };
   formAssignments: Array<{
@@ -78,6 +80,7 @@ export function AdminBatchDetailClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(batch.logoUrl ?? null);
   const [search, setSearch] = useState("");
@@ -217,6 +220,20 @@ export function AdminBatchDetailClient({
     }
   }
 
+  async function duplicateBatch() {
+    setDuplicating(true);
+    try {
+      const res = await fetch(`/api/admin/batches/${batch.id}/duplicate`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Duplicated — opening the new batch");
+      router.push(`/admin/batches/${data.data.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not duplicate batch");
+      setDuplicating(false);
+    }
+  }
+
   const filtered = batch.students.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -298,7 +315,22 @@ export function AdminBatchDetailClient({
             <p className="text-base font-semibold text-ink truncate">{batch.name}</p>
             <p className="text-xs text-ink-muted">{batch.institution.fullName}</p>
           </div>
-          {!canManage && (
+          <Button
+            size="sm"
+            variant={batch.isTemplate ? "primary" : "ghost"}
+            loading={duplicating}
+            icon={<Copy className="w-4 h-4" />}
+            onClick={duplicateBatch}
+          >
+            {batch.isTemplate ? "Use / Duplicate" : "Duplicate"}
+          </Button>
+          {batch.isTemplate && (
+            <Badge variant="default">
+              <Sparkles className="w-3 h-3 mr-1 inline" />
+              Template
+            </Badge>
+          )}
+          {!canManage && !batch.isTemplate && (
             <Badge variant="muted">
               <Lock className="w-3 h-3 mr-1 inline" />
               View only
