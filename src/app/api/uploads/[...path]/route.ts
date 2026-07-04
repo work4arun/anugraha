@@ -20,13 +20,18 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Students can only access their own files (path starts with their studentId).
-  // Exception: college logos ({batchId}/logos/...) are non-sensitive branding
-  // and viewable by any authenticated user.
+  // A student may read: their own files ({studentId}/...), any college logo
+  // ({batchId}/logos/...), and the original agreement PDF for their own batch
+  // ({batchId}/agreements/...). Other students' files — including signed
+  // agreements stored under another studentId — stay private. Admins see all.
   if (session.user.userType === "student") {
     const requestedOwnerId = params.path[0];
     const category = params.path[1];
-    if (category !== "logos" && requestedOwnerId !== session.user.id) {
+    const allowed =
+      category === "logos" ||
+      requestedOwnerId === session.user.id ||
+      (category === "agreements" && requestedOwnerId === session.user.batchId);
+    if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -61,6 +66,8 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": contentType,
+      // Preview PDFs/images in the browser tab instead of forcing a download.
+      "Content-Disposition": `inline; filename="${path.basename(resolvedFilePath)}"`,
       "Cache-Control": "private, max-age=3600",
     },
   });
