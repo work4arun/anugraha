@@ -119,7 +119,7 @@ export async function uploadFile(
   originalFilename: string,
   mimeType: string,
   studentId: string,
-  category: "documents" | "signatures" | "photos" | "pdfs" | "logos"
+  category: "documents" | "signatures" | "photos" | "pdfs" | "logos" | "agreements"
 ): Promise<UploadResult> {
   const key = buildKey(studentId, category, originalFilename);
   const provider = process.env.STORAGE_PROVIDER ?? "local";
@@ -150,13 +150,26 @@ function keyFromUrl(url: string): string {
   if (url.startsWith("/api/uploads/")) {
     return url.slice("/api/uploads/".length);
   }
+
   // S3-style: strip the origin + leading slash, best-effort.
+  let key: string;
   try {
     const u = new URL(url);
-    return u.pathname.replace(/^\/+/, "");
+    key = u.pathname.replace(/^\/+/, "");
   } catch {
-    return url.replace(/^\/+/, "");
+    key = url.replace(/^\/+/, "");
   }
+
+  // Path-style S3 endpoints (e.g. MinIO: http://host/<bucket>/<key>) include
+  // the bucket name in the path. The object key must NOT contain it, so strip
+  // a leading "<bucket>/" segment when present.
+  if ((process.env.STORAGE_PROVIDER ?? "local") === "s3") {
+    const bucket = process.env.S3_BUCKET ?? "mydayone";
+    if (key === bucket) key = "";
+    else if (key.startsWith(bucket + "/")) key = key.slice(bucket.length + 1);
+  }
+
+  return key;
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -210,7 +223,18 @@ export async function resolveToDataUri(url?: string | null): Promise<string | nu
     const buffer = await readFileBuffer(url);
     const mime = mimeFromKey(key);
     return `data:${mime};base64,${buffer.toString("base64")}`;
-  } catch {
+  } catch (err) {
+    // Surface the reason (missing file, wrong S3 key, path drift) instead of
+    // silently rendering a blank image in the PDF.
+    const provider = process.env.STORAGE_PROVIDER ?? "local";
+    const where =
+      provider === "s3"
+        ? `bucket "${process.env.S3_BUCKET ?? "mydayone"}" key "${keyFromUrl(url)}"`
+        : `${process.env.LOCAL_UPLOAD_DIR ?? "./uploads"}/${keyFromUrl(url)}`;
+    console.warn(
+      `[resolveToDataUri] provider=${provider} could not read "${url}" (${where}):`,
+      err instanceof Error ? err.message : err
+    );
     return null;
   }
 }

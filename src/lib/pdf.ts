@@ -278,6 +278,7 @@ function buildPdfHtml(student: {
     .sig-item label { font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
     .sig-item img { max-height: 60px; max-width: 180px; border-bottom: 1.5px solid #111; padding-bottom: 4px; }
     .sig-item .signed-at { font-size: 8px; color: #9CA3AF; }
+    .sig-item .sig-missing { font-size: 10px; font-style: italic; color: #6B7280; border-bottom: 1.5px solid #111; padding-bottom: 4px; min-height: 24px; }
     .declaration {
       background: #F9FAFB;
       border: 1px solid #E5E7EB;
@@ -385,7 +386,9 @@ function buildPdfHtml(student: {
         ? `<div class="sig-block">
             ${sigs.map((s) => `
               <div class="sig-item">
-                <img src="${s.imageUrl}" alt="Signature" />
+                ${s.imageUrl
+                  ? `<img src="${s.imageUrl}" alt="Signature" />`
+                  : `<span class="sig-missing">Signed digitally</span>`}
                 <label>${s.signatoryRole.replace(/_/g, " ")}</label>
                 <span class="signed-at">Signed: ${formatDate(s.signedAt)}</span>
               </div>

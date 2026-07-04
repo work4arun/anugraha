@@ -108,6 +108,7 @@ model Batch {
 
   students        Student[]
   formAssignments BatchFormAssignment[]
+  agreements      AgreementTemplate[]
 
   @@index([createdById])
   @@index([isTemplate])
@@ -166,6 +167,7 @@ model Student {
   signatures          Signature[]
   documents           Document[]
   rowAcknowledgments  DeliverableRowAcknowledgment[]
+  signedAgreements    SignedAgreement[]
   auditLogs           AuditLog[]    @relation("StudentAuditLogs")
 
   @@map("students")
@@ -358,6 +360,7 @@ model Admin {
 
   auditLogs      AuditLog[]  @relation("AdminAuditLogs")
   createdBatches Batch[]     @relation("BatchCreator")
+  createdAgreements AgreementTemplate[] @relation("AgreementCreator")
 
   @@map("admins")
 }
@@ -389,4 +392,69 @@ model AuditLog {
   createdAt   DateTime  @default(now())
 
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agreement (uploaded PDF that students sign at placed signature fields)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AgreementTemplate {
+  id             String   @id @default(cuid())
+  batchId        String
+  batch          Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name           String
+  originalPdfUrl String   // the uploaded, unsigned source PDF
+  pageCount      Int      @default(1)
+  isActive       Boolean  @default(true)
+
+  createdById    String?
+  createdBy      Admin?   @relation("AgreementCreator", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fields         AgreementSignatureField[]
+  signedAgreements SignedAgreement[]
+
+  @@index([batchId])
+  @@map("agreement_templates")
+}
+
+model AgreementSignatureField {
+  id                  String            @id @default(cuid())
+  agreementTemplateId String
+  agreementTemplate   AgreementTemplate @relation(fields: [agreementTemplateId], references: [id], onDelete: Cascade)
+
+  // Which signatory this box belongs to, e.g. "student" | "parent".
+  signerRole          String
+  // 1-based page number the box sits on.
+  page                Int
+  // Normalized geometry (0..1) relative to the page, origin at top-left. Kept
+  // resolution-independent so the same coordinates work at any render scale.
+  x                   Float
+  y                   Float
+  width               Float
+  height              Float
+  order               Int               @default(0)
+  createdAt           DateTime          @default(now())
+
+  @@index([agreementTemplateId])
+  @@map("agreement_signature_fields")
+}
+
+model SignedAgreement {
+  id                  String            @id @default(cuid())
+  studentId           String
+  student             Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  agreementTemplateId String
+  agreementTemplate   AgreementTemplate @relation(fields: [agreementTemplateId], references: [id], onDelete: Cascade)
+
+  signedPdfUrl        String?           // the stamped, completed PDF
+  status              String            @default("PENDING") // PENDING | PARTIAL | COMPLETED
+  signedAt            DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([studentId, agreementTemplateId])
+  @@index([studentId])
+  @@map("signed_agreements")
 }
