@@ -14,11 +14,20 @@
  *  - One test student (username: TEST001 / password: Test@1234)
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { TRANSPORT_ROUTES } from "../src/lib/transport";
 
 const prisma = new PrismaClient();
+
+/**
+ * Prisma's generated Json input type rejects heterogeneous typed object
+ * literals (e.g. a `fields` array whose elements have differing shapes).
+ * This helper widens such a literal to the accepted `InputJsonValue` type
+ * without losing the authored structure.
+ */
+const asJson = (value: unknown): Prisma.InputJsonValue =>
+  value as Prisma.InputJsonValue;
 
 async function main() {
   console.log("🌱  Seeding Rathinam MyDayOne…");
@@ -112,7 +121,7 @@ async function main() {
         { role: "student", label: "Signature of the Student" },
         { role: "parent", label: "Signature of the Parent" },
       ],
-      schema: {
+      schema: asJson({
         fields: [
           {
             id: "student_name",
@@ -244,7 +253,7 @@ async function main() {
         ],
         declaration:
           "I hereby declare that the information furnished above is true, complete, and correct to the best of my knowledge and belief. I understand that in the event of any information being found false or incorrect at any point of time, disciplinary action as deemed fit may be taken against me.",
-      },
+      }),
     },
   });
 
@@ -261,7 +270,7 @@ async function main() {
         { role: "student", label: "Signature of the Student" },
         { role: "parent", label: "Signature of the Parent / Guardian" },
       ],
-      schema: {
+      schema: asJson({
         clauses: [
           "Students must wear the college uniform on all working days and appear neat and clean at all times while on campus.",
           "Students must carry their college ID card and produce it on demand by any staff member or security personnel.",
@@ -284,7 +293,7 @@ async function main() {
           "I have read, understood, and agree to abide by the above Code of Conduct. I acknowledge that violation of any of the above rules may result in disciplinary action, including suspension or expulsion.",
         place: { id: "place", label: "Place", required: true },
         date: { id: "date", label: "Date", required: true, defaultToday: true },
-      },
+      }),
     },
   });
 
@@ -302,7 +311,7 @@ async function main() {
         { role: "student", label: "Signature of the Student" },
         { role: "parent", label: "Signature of the Parent / Guardian" },
       ],
-      schema: {
+      schema: asJson({
         clauses: [
           "I will actively participate in all placement training programmes, mock interviews, aptitude sessions, and skill development workshops organised by the Training & Placement Cell.",
           "I understand that my Career Readiness Score (CRS) — assessed through RAALE (Rathinam Assessment of Applied Learning and Employability) — directly impacts my placement eligibility and will reflect my readiness across aptitude, communication, technical, and behavioural competencies.",
@@ -325,7 +334,7 @@ async function main() {
           "I hereby declare that I have read and understood all of the above clauses and undertake to abide by them in letter and spirit throughout my tenure as a student of this institution.",
         place: { id: "place", label: "Place", required: true },
         date: { id: "date", label: "Date", required: true, defaultToday: true },
-      },
+      }),
     },
   });
 
@@ -346,7 +355,7 @@ async function main() {
           label: "Signature of Authorised Signatory",
         },
       ],
-      schema: {
+      schema: asJson({
         programmeHeader: {
           label: "Programme",
           value: "R-Smart Engineering Intellect",
@@ -441,7 +450,7 @@ async function main() {
           "I, the undersigned student (and parent / guardian where applicable), hereby acknowledge that I have read, understood, and individually accepted each of the programme deliverables listed above. I understand the scope, inclusions, exclusions, and obligations associated with each deliverable. I confirm that I have been given the opportunity to seek clarification on any item and am satisfied with the explanations provided. This acknowledgment is binding and forms part of my induction record.",
         place: { id: "place", label: "Place", required: true },
         date: { id: "date", label: "Date", required: true, defaultToday: true },
-      },
+      }),
     },
   });
 
@@ -455,7 +464,7 @@ async function main() {
       description: "Upload all required documents for verification",
       type: "DOCUMENT_UPLOAD",
       signatoryRoles: [],
-      schema: {
+      schema: asJson({
         documents: [
           {
             id: "photo",
@@ -494,7 +503,7 @@ async function main() {
             hint: "Front and back of Aadhaar card. If two pages, combine into one PDF (max 3 MB)",
           },
         ],
-      },
+      }),
     },
   });
 

@@ -46,6 +46,10 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Target admin not found" }, { status: 404 });
     }
 
+    // Copy ONLY the form definition — never student data. We deliberately
+    // create a fresh template from scalar fields, so none of the source's
+    // studentResponses, signatures, rowAcknowledgments or batchAssignments
+    // are carried over. The target admin receives an empty form to fill.
     const copy = await prisma.formTemplate.create({
       data: {
         name: body.name?.trim() || `${source.name} (Copy)`,

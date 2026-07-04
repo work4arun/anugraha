@@ -60,13 +60,57 @@ const TYPE_OPTIONS: { value: TemplateType; label: string; hint: string }[] = [
   { value: "DOCUMENT_UPLOAD", label: "Document upload", hint: "Request files to upload" },
 ];
 
-export function AdminTemplatesClient({ templates }: { templates: TemplateRow[] }) {
+export function AdminTemplatesClient({
+  templates,
+  admins = [],
+  isSuperAdmin = false,
+}: {
+  templates: TemplateRow[];
+  admins?: AdminOption[];
+  isSuperAdmin?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<TemplateType>("REGISTRATION");
+
+  // Duplicate-to-admin modal state
+  const [dupTarget, setDupTarget] = useState<TemplateRow | null>(null);
+  const [dupAdminId, setDupAdminId] = useState("");
+  const [dupBusy, setDupBusy] = useState(false);
+
+  function openDuplicate(t: TemplateRow) {
+    setDupAdminId("");
+    setDupTarget(t);
+  }
+
+  async function handleDuplicate() {
+    if (!dupTarget) return;
+    if (!dupAdminId) {
+      toast.error("Please choose an admin");
+      return;
+    }
+    setDupBusy(true);
+    try {
+      const res = await fetch(`/api/admin/templates/${dupTarget.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetAdminId: dupAdminId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const who = admins.find((a) => a.id === dupAdminId)?.name ?? "the admin";
+      toast.success(`Form duplicated to ${who}`);
+      setDupTarget(null);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not duplicate form");
+    } finally {
+      setDupBusy(false);
+    }
+  }
 
   async function handleCreate() {
     if (!name.trim()) {
@@ -126,13 +170,26 @@ export function AdminTemplatesClient({ templates }: { templates: TemplateRow[] }
                       <Badge variant="default" className="text-[10px]">{t.type.replace(/_/g, " ")}</Badge>
                       <h3 className="font-semibold text-ink mt-1.5">{t.name}</h3>
                       {t.description && <p className="text-sm text-ink-muted mt-0.5">{t.description}</p>}
+                      {isSuperAdmin && t.ownerName && (
+                        <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-ink-muted">
+                          <User className="w-3 h-3" />
+                          {t.ownerName}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-4 pt-3 border-t border-surface-border">
                     <span className="text-xs text-ink-muted">v{t.version} · {t.assignedCount} batch(es)</span>
-                    <Button size="sm" variant="ghost" icon={<Pencil className="w-4 h-4" />} onClick={() => router.push(`/admin/templates/${t.id}`)}>
-                      Edit
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      {isSuperAdmin && admins.length > 0 && (
+                        <Button size="sm" variant="ghost" icon={<Copy className="w-4 h-4" />} onClick={() => openDuplicate(t)}>
+                          Duplicate
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" icon={<Pencil className="w-4 h-4" />} onClick={() => router.push(`/admin/templates/${t.id}`)}>
+                        Edit
+                      </Button>
+                    </div>
                   </div>
                 </Card>
               </motion.div>
@@ -179,6 +236,47 @@ export function AdminTemplatesClient({ templates }: { templates: TemplateRow[] }
                   </div>
                   <Button size="lg" fullWidth loading={creating} onClick={handleCreate} icon={<Plus className="w-5 h-5" />}>
                     Create & edit
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Duplicate-to-admin modal (super admin only) */}
+      <AnimatePresence>
+        {dupTarget && (
+          <>
+            <motion.div variants={backdropVariants} initial="hidden" animate="visible" exit="exit" className="fixed inset-0 bg-black/40 z-50" onClick={() => !dupBusy && setDupTarget(null)} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="bg-white rounded-2xl shadow-card-lg w-full max-w-md p-6 pointer-events-auto">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-lg font-semibold text-ink">Duplicate to admin</h2>
+                  <button onClick={() => !dupBusy && setDupTarget(null)} className="p-1.5 rounded-lg hover:bg-surface-subtle text-ink-muted" aria-label="Close"><X className="w-5 h-5" /></button>
+                </div>
+                <p className="text-sm text-ink-muted mb-4">
+                  Creates a copy of <span className="font-medium text-ink">{dupTarget.name}</span> owned by the admin you choose. They can then edit it independently.
+                </p>
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="dup-admin" className="text-sm font-medium text-ink">Give the copy to</label>
+                    <select
+                      id="dup-admin"
+                      value={dupAdminId}
+                      onChange={(e) => setDupAdminId(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-surface-border text-base bg-white min-h-[48px] focus:border-brand focus:outline-none"
+                    >
+                      <option value="">Select an admin…</option>
+                      {admins.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} — {a.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button size="lg" fullWidth loading={dupBusy} onClick={handleDuplicate} icon={<Copy className="w-5 h-5" />}>
+                    Duplicate form
                   </Button>
                 </div>
               </motion.div>
