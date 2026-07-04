@@ -19,6 +19,8 @@ import {
   Plus,
   Lock,
   Sparkles,
+  FileText,
+  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -70,16 +72,28 @@ const statusConfig: Record<StudentStatus, { label: string; variant: "success" | 
   LOCKED:      { label: "Locked",      variant: "default" },
 };
 
+interface AgreementRow {
+  id: string;
+  name: string;
+  pageCount: number;
+  fieldCount: number;
+  signedCount: number;
+}
+
 export function AdminBatchDetailClient({
   batch,
   canManage,
+  agreements = [],
 }: {
   batch: BatchData;
   canManage: boolean;
+  agreements?: AgreementRow[];
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const agreementInputRef = useRef<HTMLInputElement>(null);
+  const [agreementBusy, setAgreementBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
@@ -220,6 +234,51 @@ export function AdminBatchDetailClient({
       toast.error("Could not remove step");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function handleAgreementFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast.error("Please choose a PDF file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      setAgreementBusy(true);
+      try {
+        const dataUrl = String(reader.result);
+        const res = await fetch(`/api/admin/batches/${batch.id}/agreements`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: file.name.replace(/\.pdf$/i, ""),
+            dataUrl,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error);
+        toast.success("Agreement uploaded — place the signatures");
+        router.push(`/admin/agreements/${data.data.id}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Upload failed");
+        setAgreementBusy(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function deleteAgreement(id: string) {
+    if (!confirm("Delete this agreement and its signature placements?")) return;
+    try {
+      const res = await fetch(`/api/admin/agreements/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Agreement deleted");
+      router.refresh();
+    } catch {
+      toast.error("Could not delete agreement");
     }
   }
 
@@ -533,6 +592,80 @@ export function AdminBatchDetailClient({
                 {batch.formAssignments.length === 0 && (
                   <p className="text-sm text-ink-muted py-4 text-center">
                     No form steps yet — use “Assign form” to add one.
+                  </p>
+                )}
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Agreements (uploaded PDFs students sign) */}
+          <motion.div variants={listItem}>
+            <Card padding="md">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle>Agreements to Sign</CardTitle>
+                  {canManage && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<Upload className="w-4 h-4" />}
+                      loading={agreementBusy}
+                      onClick={() => agreementInputRef.current?.click()}
+                    >
+                      Upload PDF
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+
+              <input
+                ref={agreementInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={handleAgreementFile}
+              />
+
+              <p className="text-xs text-ink-muted mb-3">
+                Upload a prepared agreement PDF, then drag student and parent signature
+                boxes onto the pages where they need to sign.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {agreements.map((ag) => (
+                  <div key={ag.id} className="flex items-center gap-3 py-2 border-b border-surface-border last:border-0">
+                    <FileText className="w-5 h-5 text-brand shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-ink truncate">{ag.name}</p>
+                      <p className="text-xs text-ink-muted">
+                        {ag.pageCount} page{ag.pageCount === 1 ? "" : "s"} · {ag.fieldCount} signature field{ag.fieldCount === 1 ? "" : "s"} · {ag.signedCount} signed
+                      </p>
+                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => router.push(`/admin/agreements/${ag.id}`)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand-50"
+                          aria-label="Place signatures"
+                          title="Place signature fields"
+                        >
+                          <PenLine className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteAgreement(ag.id)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light"
+                          aria-label="Delete agreement"
+                          title="Delete agreement"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {agreements.length === 0 && (
+                  <p className="text-sm text-ink-muted py-4 text-center">
+                    No agreements yet — use “Upload PDF” to add one.
                   </p>
                 )}
               </div>

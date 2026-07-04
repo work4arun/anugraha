@@ -27,6 +27,10 @@ const nextConfig = {
       // Exclude puppeteer from client bundle
       config.externals = [...(config.externals || []), "puppeteer"];
     }
+    // pdfjs-dist has an optional Node-only `canvas` dependency used for server
+    // rendering; we only render in the browser, so stop webpack resolving it.
+    config.resolve = config.resolve || {};
+    config.resolve.alias = { ...(config.resolve.alias || {}), canvas: false };
     return config;
   },
 };

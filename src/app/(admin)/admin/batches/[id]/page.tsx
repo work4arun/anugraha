@@ -43,9 +43,22 @@ export default async function AdminBatchDetailPage({
 
   if (!batch) notFound();
 
+  const agreements = await prisma.agreementTemplate.findMany({
+    where: { batchId: params.id },
+    orderBy: { createdAt: "desc" },
+    include: { _count: { select: { fields: true, signedAgreements: true } } },
+  });
+
   return (
     <AdminBatchDetailClient
       canManage={canManageBatch(session, batch)}
+      agreements={agreements.map((a) => ({
+        id: a.id,
+        name: a.name,
+        pageCount: a.pageCount,
+        fieldCount: a._count.fields,
+        signedCount: a._count.signedAgreements,
+      }))}
       batch={{
         id: batch.id,
         name: batch.name,
