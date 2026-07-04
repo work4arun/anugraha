@@ -46,6 +46,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Institution not found" }, { status: 404 });
     }
 
+    // Resolve chosen templates (in the admin's selected order) up front so the
+    // batch and its step assignments are written in a single atomic create —
+    // no partial batch if a step fails, and pooler-friendly (no transaction).
+    const templateIds = Array.isArray(body.templateIds) ? body.templateIds : [];
+    const steps: Array<{ formTemplateId: string; order: number; stepSlug: string; required: boolean }> = [];
+    if (templateIds.length) {
+      const templates = await prisma.formTemplate.findMany({
+        where: { id: { in: templateIds } },
+      });
+      const ordered = templateIds
+        .map((id) => templates.find((t) => t.id === id))
+        .filter((t): t is (typeof templates)[number] => Boolean(t));
+
+      const usedSlugs = new Set<string>();
+      let order = 1;
+      for (const t of ordered) {
+        const base = slugify(t.name) || `step-${order}`;
+        let stepSlug = base;
+        let n = 2;
+        while (usedSlugs.has(stepSlug)) stepSlug = `${base}-${n++}`;
+        usedSlugs.add(stepSlug);
+        steps.push({ formTemplateId: t.id, order, stepSlug, required: true });
+        order++;
+      }
+    }
+
     const batch = await prisma.batch.create({
       data: {
         institutionId,
@@ -58,45 +84,25 @@ export async function POST(req: NextRequest) {
         isTemplate: isSuperAdmin(session) ? body.isTemplate ?? false : false,
         // Record ownership: only this admin (or a SUPER_ADMIN) can edit it later.
         createdById: session.user.id,
+        ...(steps.length ? { formAssignments: { create: steps } } : {}),
       },
     });
 
-    // Assign chosen templates as ordered steps.
-    const templateIds = Array.isArray(body.templateIds) ? body.templateIds : [];
-    if (templateIds.length) {
-      const templates = await prisma.formTemplate.findMany({
-        where: { id: { in: templateIds } },
+    // Best-effort audit — never fail a successful create on a logging hiccup.
+    try {
+      await prisma.auditLog.create({
+        data: {
+          adminId: session.user.id,
+          actorType: "admin",
+          action: "BATCH_CREATED",
+          entityType: "Batch",
+          entityId: batch.id,
+          metadata: { name, course, academicYear, steps: steps.length },
+        },
       });
-      // Preserve the order the admin selected them in.
-      const ordered = templateIds
-        .map((id) => templates.find((t) => t.id === id))
-        .filter((t): t is (typeof templates)[number] => Boolean(t));
-
-      const usedSlugs = new Set<string>();
-      let order = 1;
-      for (const t of ordered) {
-        let base = slugify(t.name) || `step-${order}`;
-        let stepSlug = base;
-        let n = 2;
-        while (usedSlugs.has(stepSlug)) stepSlug = `${base}-${n++}`;
-        usedSlugs.add(stepSlug);
-        await prisma.batchFormAssignment.create({
-          data: { batchId: batch.id, formTemplateId: t.id, order, stepSlug, required: true },
-        });
-        order++;
-      }
+    } catch (auditErr) {
+      console.warn("[batches POST] audit log failed:", auditErr);
     }
-
-    await prisma.auditLog.create({
-      data: {
-        adminId: session.user.id,
-        actorType: "admin",
-        action: "BATCH_CREATED",
-        entityType: "Batch",
-        entityId: batch.id,
-        metadata: { name, course, academicYear, steps: templateIds.length },
-      },
-    });
 
     return NextResponse.json({ success: true, data: { id: batch.id } });
   } catch (error) {
