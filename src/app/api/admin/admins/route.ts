@@ -104,19 +104,40 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        adminId: session.user.id,
-        actorType: "admin",
-        action: "ADMIN_CREATED",
-        entityType: "Admin",
-        entityId: admin.id,
-        metadata: { email, role },
-      },
-    });
+    // Audit logging is best-effort — a logging hiccup must never turn a
+    // successful admin creation into a 500 (which would leave the account
+    // created but report failure, so a retry then says "already exists").
+    try {
+      await prisma.auditLog.create({
+        data: {
+          adminId: session.user.id,
+          actorType: "admin",
+          action: "ADMIN_CREATED",
+          entityType: "Admin",
+          entityId: admin.id,
+          metadata: { email, role },
+        },
+      });
+    } catch (auditErr) {
+      console.warn("[admins POST] audit log failed:", auditErr);
+    }
 
     return NextResponse.json({ success: true, data: admin });
   } catch (error) {
+    // A concurrent/double submit can slip past the findUnique check above and
+    // hit the unique-email constraint (Prisma P2002). Report it as a clean
+    // "already exists" instead of a generic 500.
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
+      return NextResponse.json(
+        { success: false, error: "An admin with this email already exists" },
+        { status: 409 }
+      );
+    }
     console.error("[admins POST]", error);
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }

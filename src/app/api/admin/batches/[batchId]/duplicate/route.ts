@@ -44,54 +44,52 @@ export async function POST(
 
     const newName = overrideName ?? `Copy of ${source.name}`;
 
-    // Create the new batch + copy step assignments in one transaction so we
-    // never leave a half-cloned batch behind if a step fails.
-    const created = await prisma.$transaction(async (tx) => {
-      const batch = await tx.batch.create({
-        data: {
-          institutionId: source.institutionId,
-          name: newName,
-          course: source.course,
-          department: source.department,
-          academicYear: source.academicYear,
-          logoUrl: source.logoUrl,
-          isActive: source.isActive,
-          inductionDeadline: source.inductionDeadline,
-          // The copy is always a normal batch owned by whoever duplicated it.
-          isTemplate: false,
-          createdById: session.user.id,
-        },
-      });
-
-      for (const a of source.formAssignments) {
-        await tx.batchFormAssignment.create({
-          data: {
-            batchId: batch.id,
+    // Create the new batch and copy its step assignments in a single nested
+    // write. Prisma wraps this in one atomic statement — no interactive
+    // transaction, which is more robust over a pooled (pgbouncer) connection.
+    const created = await prisma.batch.create({
+      data: {
+        institutionId: source.institutionId,
+        name: newName,
+        course: source.course,
+        department: source.department,
+        academicYear: source.academicYear,
+        logoUrl: source.logoUrl,
+        isActive: source.isActive,
+        inductionDeadline: source.inductionDeadline,
+        // The copy is always a normal batch owned by whoever duplicated it.
+        isTemplate: false,
+        createdById: session.user.id,
+        formAssignments: {
+          create: source.formAssignments.map((a) => ({
             formTemplateId: a.formTemplateId,
             order: a.order,
             stepSlug: a.stepSlug,
             required: a.required,
-          },
-        });
-      }
-
-      return batch;
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        adminId: session.user.id,
-        actorType: "admin",
-        action: "BATCH_DUPLICATED",
-        entityType: "Batch",
-        entityId: created.id,
-        metadata: {
-          sourceBatchId: source.id,
-          sourceWasTemplate: source.isTemplate,
-          steps: source.formAssignments.length,
+          })),
         },
       },
     });
+
+    // Best-effort audit — never fail a successful duplicate on a logging hiccup.
+    try {
+      await prisma.auditLog.create({
+        data: {
+          adminId: session.user.id,
+          actorType: "admin",
+          action: "BATCH_DUPLICATED",
+          entityType: "Batch",
+          entityId: created.id,
+          metadata: {
+            sourceBatchId: source.id,
+            sourceWasTemplate: source.isTemplate,
+            steps: source.formAssignments.length,
+          },
+        },
+      });
+    } catch (auditErr) {
+      console.warn("[batch duplicate] audit log failed:", auditErr);
+    }
 
     return NextResponse.json({ success: true, data: { id: created.id } });
   } catch (error) {
