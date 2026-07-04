@@ -5,7 +5,7 @@
  */
 
 import { prisma } from "./prisma";
-import { uploadFile, hashBuffer } from "./storage";
+import { uploadFile, resolveToDataUri } from "./storage";
 import { pdfFilename, formatDate } from "./utils";
 
 interface PdfGenerationResult {
@@ -32,24 +32,43 @@ async function launchBrowser() {
     !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
     process.env.PUPPETEER_SERVERLESS === "1";
 
-  if (useSlimChromium) {
+  // Slim Chromium (serverless) — also used when a system Chrome path is given.
+  async function launchSlim() {
     const chromium = (await import("@sparticuz/chromium")).default;
     const puppeteerCore = (await import("puppeteer-core")).default;
     return puppeteerCore.launch({
       args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
       defaultViewport: chromium.defaultViewport,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
       headless: true,
     });
   }
 
-  // Local / non-serverless: full puppeteer (bundled Chromium).
-  const puppeteer = (await import("puppeteer")).default;
-  return puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
+  // Full puppeteer with its bundled Chromium (normal local dev).
+  async function launchFull() {
+    const puppeteer = (await import("puppeteer")).default;
+    return puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+  }
+
+  // Prefer the environment-appropriate launcher, but fall back to the other if
+  // it fails (e.g. bundled Chromium missing in dev, or `puppeteer` not installed
+  // in a production node_modules) so a single missing binary doesn't 500.
+  const primary = useSlimChromium ? launchSlim : launchFull;
+  const fallback = useSlimChromium ? launchFull : launchSlim;
+  try {
+    return await primary();
+  } catch (primaryErr) {
+    try {
+      return await fallback();
+    } catch {
+      throw primaryErr;
+    }
+  }
 }
 
 export async function generateStudentPdf(
@@ -77,13 +96,33 @@ export async function generateStudentPdf(
 
   if (!student) throw new Error("Student not found");
 
-  const html = buildPdfHtml(student);
+  // Embed every image the PDF references as a base64 data URI. Puppeteer's
+  // `setContent` has no page origin, so relative urls (/api/uploads/...) can't
+  // load and would stall the render; inlining makes the document self-contained.
+  const embeddedStudent = {
+    ...student,
+    photoUrl: (await resolveToDataUri(student.photoUrl)) ?? undefined,
+    batch: {
+      ...student.batch,
+      logoUrl: (await resolveToDataUri(student.batch.logoUrl)) ?? undefined,
+    },
+    signatures: await Promise.all(
+      student.signatures.map(async (s) => ({
+        ...s,
+        imageUrl: (await resolveToDataUri(s.imageUrl)) ?? "",
+      }))
+    ),
+  };
+
+  const html = buildPdfHtml(embeddedStudent);
 
   // ── Launch Puppeteer (serverless-aware) ───────────────────────────────────
   const browser = await launchBrowser();
 
   const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: "networkidle0" });
+  // Images are inlined as data URIs, so the document has no external requests —
+  // `load` fires immediately and we still cap it with an explicit timeout.
+  await page.setContent(html, { waitUntil: "load", timeout: 30000 });
 
   const pdfBuffer = await page.pdf({
     format: "A4",

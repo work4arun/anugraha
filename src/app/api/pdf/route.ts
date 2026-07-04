@@ -35,8 +35,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     console.error("[pdf POST]", error);
+    const message = error instanceof Error ? error.message : String(error);
+    // Surface the real cause outside production so failures are debuggable
+    // instead of hiding behind a generic message.
     return NextResponse.json(
-      { success: false, error: "PDF generation failed" },
+      {
+        success: false,
+        error: "PDF generation failed",
+        ...(process.env.NODE_ENV !== "production" ? { detail: message } : {}),
+      },
       { status: 500 }
     );
   }
