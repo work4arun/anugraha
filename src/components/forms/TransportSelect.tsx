@@ -5,7 +5,7 @@
  *
  * The student first chooses a bus route from a dropdown; once a route is
  * selected, a second dropdown lists only the boarding points for that route.
- * The stored value is { route, boardingPoint, fee }.
+ * The stored value is { route, boardingPoint }.
  */
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,7 +15,6 @@ import type { TransportRoute } from "@/types";
 export interface TransportValue {
   route?: string;
   boardingPoint?: string;
-  fee?: string;
 }
 
 interface Props {
@@ -41,9 +40,8 @@ export function TransportSelect({
   const selectedRoute = routes.find((r) => r.route === selected.route);
 
   function handleRouteChange(routeName: string) {
-    const route = routes.find((r) => r.route === routeName);
     // Reset the boarding point whenever the route changes.
-    onChange({ route: routeName || undefined, boardingPoint: undefined, fee: route?.fee });
+    onChange({ route: routeName || undefined, boardingPoint: undefined });
   }
 
   function handleBoardingChange(bp: string) {
@@ -76,7 +74,6 @@ export function TransportSelect({
           {routes.map((r) => (
             <option key={r.route} value={r.route}>
               {r.route}
-              {r.fee ? ` — ${r.fee}` : ""}
             </option>
           ))}
         </select>
@@ -109,11 +106,6 @@ export function TransportSelect({
                 </option>
               ))}
             </select>
-            {selectedRoute.fee && (
-              <p className="text-xs text-ink-muted">
-                Annual bus fee for this route: <span className="font-medium text-ink">{selectedRoute.fee}</span>
-              </p>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
