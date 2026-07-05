@@ -119,25 +119,39 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
 
   function buildSchema(): Record<string, unknown> {
     switch (template.type) {
-      case "REGISTRATION":
+      case "REGISTRATION": {
+        // Preserve properties the editor UI doesn't manage (routes, showWhen,
+        // hint, inputMode, …) by merging over the original field with the
+        // same id — otherwise saving a template would silently strip the
+        // transport selector's routes and any conditional-display rules.
+        const originalById = new Map(
+          (((template.schema.fields as unknown[]) ?? []) as Array<Record<string, unknown>>).map(
+            (f) => [String(f.id ?? ""), f]
+          )
+        );
         return {
           ...template.schema,
           allowSkip,
-          fields: fields.map((f) => ({
-            id: f.id || slugify(f.label).replace(/-/g, "_"),
-            label: f.label,
-            type: f.type,
-            required: f.required,
-            ...(f.type === "radio" || f.type === "select"
-              ? {
-                  options: f.options
-                    .split(",")
-                    .map((o) => o.trim())
-                    .filter(Boolean),
-                }
-              : {}),
-          })),
+          fields: fields.map((f) => {
+            const id = f.id || slugify(f.label).replace(/-/g, "_");
+            return {
+              ...(originalById.get(f.id) ?? {}),
+              id,
+              label: f.label,
+              type: f.type,
+              required: f.required,
+              ...(f.type === "radio" || f.type === "select"
+                ? {
+                    options: f.options
+                      .split(",")
+                      .map((o) => o.trim())
+                      .filter(Boolean),
+                  }
+                : {}),
+            };
+          }),
         };
+      }
       case "ACKNOWLEDGMENT":
         return {
           ...template.schema,
