@@ -7,6 +7,7 @@
 import { PDFDocument } from "pdf-lib";
 import { prisma } from "./prisma";
 import { uploadFile, resolveToDataUri, readFileBuffer } from "./storage";
+import { renderAgreementBytes, collectStudentSignatures } from "./agreement";
 import { pdfFilename, formatDate } from "./utils";
 
 interface PdfGenerationResult {
@@ -173,31 +174,49 @@ export async function generateStudentPdf(
     releasePdfSlot();
   }
 
-  // ── Append signed agreement PDFs ─────────────────────────────────────────
-  // Agreements (uploaded PDFs the student signed at placed fields) live as
-  // separate stamped files (SignedAgreement.signedPdfUrl). Merge their pages
-  // onto the end of the rendered record so the final PDF is complete.
-  const signedAgreements = await prisma.signedAgreement.findMany({
-    where: { studentId, signedPdfUrl: { not: null } },
-    include: { agreementTemplate: true },
+  // ── Append agreement PDFs ────────────────────────────────────────────────
+  // Every ACTIVE agreement the admin uploaded for this batch is included:
+  //   - if the student completed the sign flow, merge the stored signed copy;
+  //   - otherwise stamp it on-the-fly from the student's saved signatures
+  //     (SIGNATURE + auto DATE fields; checkbox/text answers need the sign
+  //     flow, so those stay blank) so the agreement is never missing.
+  const agreementTemplates = await prisma.agreementTemplate.findMany({
+    where: { batchId: student.batchId, isActive: true },
     orderBy: { createdAt: "asc" },
+    include: { fields: { select: { signerRole: true } } },
   });
 
-  if (signedAgreements.length > 0) {
+  if (agreementTemplates.length > 0) {
+    const signedByTemplate = new Map(
+      (
+        await prisma.signedAgreement.findMany({
+          where: { studentId, signedPdfUrl: { not: null } },
+        })
+      ).map((sa) => [sa.agreementTemplateId, sa.signedPdfUrl!])
+    );
+
     const merged = await PDFDocument.load(pdfBuffer);
-    for (const sa of signedAgreements) {
+    for (const tpl of agreementTemplates) {
       try {
-        const bytes = await readFileBuffer(sa.signedPdfUrl!);
-        const src = await PDFDocument.load(new Uint8Array(bytes), {
-          ignoreEncryption: true,
-        });
+        let bytes: Uint8Array;
+        const signedUrl = signedByTemplate.get(tpl.id);
+        if (signedUrl) {
+          bytes = new Uint8Array(await readFileBuffer(signedUrl));
+        } else {
+          const roles = Array.from(new Set(tpl.fields.map((f) => f.signerRole)));
+          const signers = roles.length
+            ? await collectStudentSignatures(studentId, roles)
+            : [];
+          bytes = (await renderAgreementBytes(tpl.id, signers)).bytes;
+        }
+        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const pages = await merged.copyPages(src, src.getPageIndices());
         pages.forEach((p) => merged.addPage(p));
       } catch (err) {
         // A single unreadable agreement shouldn't kill the whole PDF —
         // log and continue so the rest of the record still generates.
         console.error(
-          `PDF merge: failed to append agreement "${sa.agreementTemplate.name}" (${sa.id}):`,
+          `PDF merge: failed to append agreement "${tpl.name}" (${tpl.id}):`,
           err
         );
       }
@@ -281,7 +300,7 @@ function buildPdfHtml(student: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rathinam Anugraha 2026 — ${student.name}</title>
+  <title>Rathinam Anugraha 2026 — ${escapeHtml(student.name)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -386,15 +405,15 @@ function buildPdfHtml(student: {
     ${student.batch.logoUrl ? `<img class="cover-logo" src="${student.batch.logoUrl}" alt="Institution logo" />` : ""}
     <h1>Rathinam Anugraha 2026</h1>
     <h2>Anugraha 2026 — Student Induction Record</h2>
-    <h2 style="font-size:12px;margin-top:-14px;">${student.batch.institution.fullName}</h2>
+    <h2 style="font-size:12px;margin-top:-14px;">${escapeHtml(student.batch.institution.fullName)}</h2>
     <table>
-      <tr><td>Student Name</td><td>${student.name}</td></tr>
-      <tr><td>Reg. No.</td><td>${student.regNo}</td></tr>
-      <tr><td>Course</td><td>${student.batch.course}</td></tr>
-      <tr><td>Batch</td><td>${student.batch.name}</td></tr>
-      <tr><td>Academic Year</td><td>${student.batch.academicYear}</td></tr>
-      ${student.email ? `<tr><td>Email</td><td>${student.email}</td></tr>` : ""}
-      ${student.mobile ? `<tr><td>Mobile</td><td>${student.mobile}</td></tr>` : ""}
+      <tr><td>Student Name</td><td>${escapeHtml(student.name)}</td></tr>
+      <tr><td>Reg. No.</td><td>${escapeHtml(student.regNo)}</td></tr>
+      <tr><td>Course</td><td>${escapeHtml(student.batch.course)}</td></tr>
+      <tr><td>Batch</td><td>${escapeHtml(student.batch.name)}</td></tr>
+      <tr><td>Academic Year</td><td>${escapeHtml(student.batch.academicYear)}</td></tr>
+      ${student.email ? `<tr><td>Email</td><td>${escapeHtml(student.email)}</td></tr>` : ""}
+      ${student.mobile ? `<tr><td>Mobile</td><td>${escapeHtml(student.mobile)}</td></tr>` : ""}
       <tr><td>Generated On</td><td>${generatedAt}</td></tr>
     </table>
   </div>
@@ -418,9 +437,9 @@ function buildPdfHtml(student: {
         const clauses = (schema.clauses ?? []) as string[];
         content = `
           <ol class="clause-list">
-            ${clauses.map((c, i) => `<li><span class="num">${i + 1}.</span><span>${c}</span></li>`).join("")}
+            ${clauses.map((c, i) => `<li><span class="num">${i + 1}.</span><span>${escapeHtml(c)}</span></li>`).join("")}
           </ol>
-          <div class="declaration">${schema.acknowledgmentText ?? ""}</div>
+          <div class="declaration">${escapeHtml(schema.acknowledgmentText ?? "")}</div>
         `;
       }
 
@@ -444,9 +463,9 @@ function buildPdfHtml(student: {
             <tbody>
               ${rows.map((r) => `
                 <tr>
-                  <td>${r.sno}</td>
-                  <td style="white-space:pre-line;font-weight:600">${r.deliverable}</td>
-                  <td style="white-space:pre-line">${r.keyPoints}</td>
+                  <td>${escapeHtml(r.sno)}</td>
+                  <td style="white-space:pre-line;font-weight:600">${escapeHtml(r.deliverable)}</td>
+                  <td style="white-space:pre-line">${escapeHtml(r.keyPoints)}</td>
                   <td class="ack-cell">
                     ${ackedIds.has(r.id) ? '<span class="ack-yes">✓</span>' : "—"}
                   </td>
@@ -454,7 +473,7 @@ function buildPdfHtml(student: {
               `).join("")}
             </tbody>
           </table>
-          <div class="declaration">${schema.declaration ?? ""}</div>
+          <div class="declaration">${escapeHtml(schema.declaration ?? "")}</div>
         `;
       }
 
@@ -465,7 +484,7 @@ function buildPdfHtml(student: {
                 ${s.imageUrl
                   ? `<img src="${s.imageUrl}" alt="Signature" />`
                   : `<span class="sig-missing">Signed digitally</span>`}
-                <label>${s.signatoryRole.replace(/_/g, " ")}</label>
+                <label>${escapeHtml(s.signatoryRole.replace(/_/g, " "))}</label>
                 <span class="signed-at">Signed: ${formatDate(s.signedAt)}</span>
               </div>
             `).join("")}
@@ -475,7 +494,7 @@ function buildPdfHtml(student: {
       return `
         <div class="${idx > 0 ? "page-break" : ""} section">
           <div class="section-title">
-            ${a.order}. ${a.formTemplate.name}
+            ${escapeHtml(a.order)}. ${escapeHtml(a.formTemplate.name)}
           </div>
           ${content}
           ${sigHtml}
@@ -493,8 +512,8 @@ function buildPdfHtml(student: {
           (d) => `
           <li>
             <span class="check">✓</span>
-            ${d.label}
-            <span style="color:#9CA3AF;margin-left:8px">(${d.uploadStatus})</span>
+            ${escapeHtml(d.label)}
+            <span style="color:#9CA3AF;margin-left:8px">(${escapeHtml(d.uploadStatus)})</span>
           </li>`
         )
         .join("")}
@@ -503,7 +522,7 @@ function buildPdfHtml(student: {
 
   <div class="footer-stamp">
     This document was generated digitally by the Rathinam Anugraha 2026 platform and is valid without a wet signature.
-    Institution: ${student.batch.institution.fullName} · Generated: ${generatedAt}
+    Institution: ${escapeHtml(student.batch.institution.fullName)} · Generated: ${generatedAt}
   </div>
 
 </body>

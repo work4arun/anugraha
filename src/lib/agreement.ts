@@ -48,18 +48,15 @@ async function loadPngBytes(image: string): Promise<Uint8Array | null> {
 }
 
 /**
- * Generate (or regenerate) the signed PDF for a student + agreement template.
+ * Render the stamped agreement PDF in memory (no upload, no DB writes).
  * Only fields whose signerRole has a provided image are stamped; missing
  * signers are simply left blank, so this can run for a partial signing too.
- *
- * Returns the stored url of the produced PDF.
  */
-export async function stampAgreement(
-  studentId: string,
+export async function renderAgreementBytes(
   agreementTemplateId: string,
   signers: SignerImage[],
   values: FieldValues = {}
-): Promise<{ url: string; stamped: number }> {
+): Promise<{ bytes: Uint8Array; stamped: number; templateName: string }> {
   const template = await prisma.agreementTemplate.findUnique({
     where: { id: agreementTemplateId },
     include: { fields: true },
@@ -175,9 +172,28 @@ export async function stampAgreement(
   }
 
   const outBytes = await pdf.save();
-  const safeName = template.name.replace(/[^a-z0-9]+/gi, "_").slice(0, 40).toLowerCase() || "agreement";
+  return { bytes: outBytes, stamped, templateName: template.name };
+}
+
+/**
+ * Generate (or regenerate) the signed PDF for a student + agreement template
+ * and save it to storage. Returns the stored url of the produced PDF.
+ */
+export async function stampAgreement(
+  studentId: string,
+  agreementTemplateId: string,
+  signers: SignerImage[],
+  values: FieldValues = {}
+): Promise<{ url: string; stamped: number }> {
+  const { bytes, stamped, templateName } = await renderAgreementBytes(
+    agreementTemplateId,
+    signers,
+    values
+  );
+
+  const safeName = templateName.replace(/[^a-z0-9]+/gi, "_").slice(0, 40).toLowerCase() || "agreement";
   const { url } = await uploadFile(
-    Buffer.from(outBytes),
+    Buffer.from(bytes),
     `${safeName}_signed.pdf`,
     "application/pdf",
     studentId,

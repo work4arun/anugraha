@@ -1,9 +1,24 @@
 # Bug scan — pre-launch review (1000s of students)
 
-> **Update:** Issues 1–5 (Critical) are now FIXED in code, plus the PDF header
-> part of issue 6. Run `npx prisma db push && npx prisma generate` locally and
-> restart to apply the Document unique constraint. Issues 6 (body template),
-> 7–16 remain open.
+> **Update (2026-07-05 re-scan):** Issues 1–6 are now FIXED in code (issue 6
+> body template escaping completed — every interpolation in `buildPdfHtml` now
+> goes through `escapeHtml`). Run `npx prisma db push && npx prisma generate`
+> locally and restart to apply the Document unique constraint.
+> **Still open: 7 (bulk import is still sequential), 9 (no rate limiting),
+> 10 (admin scoping on student-level routes), 11 (deactivated admin JWT valid
+> up to 8 h), 12 (OTP attempt race), 13 (hashOtp dev fallback), 14 (signature
+> POST unbounded), 15 (x-forwarded-for), 16 (local storage on multi-instance).**
+> Issue 8 (uploads path check + sync I/O) is fixed.
+>
+> New observations from the re-scan:
+> - `generatePassword` (src/lib/utils.ts) uses `Math.random()` — predictable;
+>   use `crypto.randomInt` for student passwords.
+> - REGISTRATION sections in the final PDF print only "Form data captured
+>   digitally" — the student's actual registration answers are not included.
+>   Confirm this is intended.
+> - Final PDF now auto-includes every active batch agreement (signed copy, or
+>   stamped on-the-fly from saved signatures). Note auto-stamp leaves
+>   checkbox/text answers blank if the student skipped the sign flow.
 
 Typecheck passes (`tsc --noEmit` → 0 errors). The issues below are logic, security, and scale bugs found by reading every API route, lib, and the auth/middleware layer.
 
