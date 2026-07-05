@@ -17,6 +17,10 @@ import {
   X,
   ArrowUp,
   ArrowDown,
+  Pencil,
+  Upload,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
@@ -49,6 +53,7 @@ interface AgreementData {
   batchId: string;
   originalPdfUrl: string;
   pageCount: number;
+  isActive: boolean;
   fields: Array<{
     id: string;
     signerRole: string;
@@ -131,6 +136,87 @@ export function AgreementEditorClient({
     }))
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  // ── Agreement meta editing (rename / active toggle / replace PDF) ──────────
+  const [name, setName] = useState(agreement.name);
+  const [isActive, setIsActive] = useState(agreement.isActive);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(agreement.name);
+  const [metaBusy, setMetaBusy] = useState(false);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  async function patchAgreement(body: {
+    name?: string;
+    isActive?: boolean;
+    dataUrl?: string;
+  }): Promise<{ droppedFields: number } | null> {
+    setMetaBusy(true);
+    try {
+      const res = await fetch(`/api/admin/agreements/${agreement.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error);
+      return data.data;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update agreement");
+      return null;
+    } finally {
+      setMetaBusy(false);
+    }
+  }
+
+  async function saveName() {
+    const trimmed = nameDraft.trim();
+    setEditingName(false);
+    if (!trimmed || trimmed === name) {
+      setNameDraft(name);
+      return;
+    }
+    const ok = await patchAgreement({ name: trimmed });
+    if (ok) {
+      setName(trimmed);
+      setNameDraft(trimmed);
+      toast.success("Agreement renamed");
+    } else {
+      setNameDraft(name);
+    }
+  }
+
+  async function toggleActive() {
+    const next = !isActive;
+    const ok = await patchAgreement({ isActive: next });
+    if (ok) {
+      setIsActive(next);
+      toast.success(next ? "Agreement visible to students" : "Agreement hidden from students");
+    }
+  }
+
+  function onReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast.error("Please choose a PDF file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const result = await patchAgreement({ dataUrl: String(reader.result) });
+      if (result) {
+        toast.success(
+          result.droppedFields > 0
+            ? `PDF replaced — ${result.droppedFields} field(s) on removed pages were dropped`
+            : "PDF replaced — please re-check field positions"
+        );
+        // Reload so the new PDF, page count, and remaining fields load fresh.
+        window.location.reload();
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   // ── Load the PDF once ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -346,15 +432,79 @@ export function AgreementEditorClient({
             <ArrowLeft className="w-5 h-5 text-ink" />
           </button>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-ink truncate">{agreement.name}</p>
+            {editingName && canManage ? (
+              <input
+                type="text"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveName();
+                  if (e.key === "Escape") {
+                    setNameDraft(name);
+                    setEditingName(false);
+                  }
+                }}
+                autoFocus
+                maxLength={120}
+                className="w-full font-semibold text-ink border border-surface-border rounded-lg px-2 py-1 text-sm"
+              />
+            ) : (
+              <p className="font-semibold text-ink truncate flex items-center gap-1.5">
+                {name}
+                {canManage && (
+                  <button
+                    onClick={() => setEditingName(true)}
+                    className="text-ink-muted hover:text-ink shrink-0"
+                    aria-label="Rename agreement"
+                    title="Rename agreement"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </p>
+            )}
             <p className="text-xs text-ink-muted">
               {counts.student} student · {counts.parent} parent field(s)
+              {!isActive && <span className="text-error font-medium"> · hidden</span>}
             </p>
           </div>
           {canManage && (
-            <Button size="sm" onClick={save} loading={saving} icon={<Save className="w-4 h-4" />}>
-              Save
-            </Button>
+            <>
+              <button
+                onClick={toggleActive}
+                disabled={metaBusy}
+                className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border ${
+                  isActive
+                    ? "border-surface-border text-ink-muted hover:bg-surface-subtle"
+                    : "border-error/40 text-error bg-error/5"
+                }`}
+                title={isActive ? "Hide from students" : "Show to students"}
+              >
+                {isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                {isActive ? "Active" : "Hidden"}
+              </button>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={metaBusy}
+                icon={<Upload className="w-4 h-4" />}
+                onClick={() => replaceInputRef.current?.click()}
+                title="Replace the PDF (placed fields are kept)"
+              >
+                Replace PDF
+              </Button>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={onReplaceFile}
+              />
+              <Button size="sm" onClick={save} loading={saving} icon={<Save className="w-4 h-4" />}>
+                Save
+              </Button>
+            </>
           )}
         </div>
       </header>
@@ -418,16 +568,14 @@ export function AgreementEditorClient({
               </span>
             </div>
 
-            {/* Properties for the selected TEXT/CHECKBOX/DROPDOWN field */}
+            {/* Properties for the selected field */}
             {(() => {
               const sel = fields.find((f) => f.key === selectedKey);
-              if (
-                !sel ||
-                (sel.fieldType !== "TEXT" &&
-                  sel.fieldType !== "CHECKBOX" &&
-                  sel.fieldType !== "DROPDOWN")
-              )
-                return null;
+              if (!sel) return null;
+              const hasProps =
+                sel.fieldType === "TEXT" ||
+                sel.fieldType === "CHECKBOX" ||
+                sel.fieldType === "DROPDOWN";
               return (
                 <div className="rounded-xl border border-surface-border bg-white px-3 py-2 space-y-2">
                   <div className="flex flex-wrap items-center gap-3">
@@ -435,6 +583,29 @@ export function AgreementEditorClient({
                       {typeIcon(sel.fieldType, "w-3.5 h-3.5")}
                       {TYPE_META[sel.fieldType].label} field
                     </span>
+                    <label className="flex items-center gap-2 text-xs text-ink-muted">
+                      Signer:
+                      <select
+                        value={sel.signerRole}
+                        onChange={(e) =>
+                          updateField(sel.key, {
+                            signerRole: e.target.value === "parent" ? "parent" : "student",
+                          })
+                        }
+                        className="text-sm border border-surface-border rounded-lg px-2 py-1 bg-white"
+                      >
+                        <option value="student">Student</option>
+                        <option value="parent">Parent / Guardian</option>
+                      </select>
+                    </label>
+                    {!hasProps && (
+                      <span className="text-[11px] text-ink-muted">
+                        {sel.fieldType === "DATE"
+                          ? "Auto-fills with the signing date."
+                          : "Stamped from the signer's saved signature."}
+                      </span>
+                    )}
+                    {hasProps && (
                     <input
                       type="text"
                       value={sel.label}
@@ -449,6 +620,8 @@ export function AgreementEditorClient({
                       className="flex-1 min-w-[200px] text-sm border border-surface-border rounded-lg px-2 py-1.5"
                       maxLength={120}
                     />
+                    )}
+                    {hasProps && (
                     <label className="flex items-center gap-1.5 text-xs text-ink-muted select-none">
                       <input
                         type="checkbox"
@@ -457,6 +630,7 @@ export function AgreementEditorClient({
                       />
                       Required
                     </label>
+                    )}
                   </div>
 
                   {sel.fieldType === "DROPDOWN" && (

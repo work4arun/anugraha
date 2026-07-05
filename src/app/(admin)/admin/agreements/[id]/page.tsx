@@ -33,6 +33,7 @@ export default async function AgreementEditorPage({
         batchId: agreement.batchId,
         originalPdfUrl: agreement.originalPdfUrl,
         pageCount: agreement.pageCount,
+        isActive: agreement.isActive,
         fields: agreement.fields.map((f) => ({
           id: f.id,
           signerRole: f.signerRole,

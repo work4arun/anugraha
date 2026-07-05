@@ -4,8 +4,9 @@
  * Called server-side only — never import this in client components.
  */
 
+import { PDFDocument } from "pdf-lib";
 import { prisma } from "./prisma";
-import { uploadFile, resolveToDataUri } from "./storage";
+import { uploadFile, resolveToDataUri, readFileBuffer } from "./storage";
 import { pdfFilename, formatDate } from "./utils";
 
 interface PdfGenerationResult {
@@ -170,6 +171,38 @@ export async function generateStudentPdf(
     }
   } finally {
     releasePdfSlot();
+  }
+
+  // ── Append signed agreement PDFs ─────────────────────────────────────────
+  // Agreements (uploaded PDFs the student signed at placed fields) live as
+  // separate stamped files (SignedAgreement.signedPdfUrl). Merge their pages
+  // onto the end of the rendered record so the final PDF is complete.
+  const signedAgreements = await prisma.signedAgreement.findMany({
+    where: { studentId, signedPdfUrl: { not: null } },
+    include: { agreementTemplate: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (signedAgreements.length > 0) {
+    const merged = await PDFDocument.load(pdfBuffer);
+    for (const sa of signedAgreements) {
+      try {
+        const bytes = await readFileBuffer(sa.signedPdfUrl!);
+        const src = await PDFDocument.load(new Uint8Array(bytes), {
+          ignoreEncryption: true,
+        });
+        const pages = await merged.copyPages(src, src.getPageIndices());
+        pages.forEach((p) => merged.addPage(p));
+      } catch (err) {
+        // A single unreadable agreement shouldn't kill the whole PDF —
+        // log and continue so the rest of the record still generates.
+        console.error(
+          `PDF merge: failed to append agreement "${sa.agreementTemplate.name}" (${sa.id}):`,
+          err
+        );
+      }
+    }
+    pdfBuffer = await merged.save();
   }
 
   // ── Upload PDF ────────────────────────────────────────────────────────────
