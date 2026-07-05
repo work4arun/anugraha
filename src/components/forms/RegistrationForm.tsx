@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SignatureCanvas } from "@/components/signature/SignatureCanvas";
 import { TransportSelect, type TransportValue } from "@/components/forms/TransportSelect";
+import { SkipStep } from "@/components/forms/SkipStep";
 import { listContainer, listItem } from "@/lib/motion";
 import type { RegistrationSchema, FieldDefinition } from "@/types";
 
@@ -38,7 +39,7 @@ export function RegistrationForm({
   batchCourse,
   onComplete,
 }: Props) {
-  const { fields, declaration } = schema as RegistrationSchema;
+  const { fields, declaration, allowSkip } = schema as RegistrationSchema;
   const [saving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [signatures, setSignatures] = useState<Record<string, string>>(existingSignatures);
@@ -97,28 +98,40 @@ export function RegistrationForm({
 
   // ── Submit ───────────────────────────────────────────────────────────────
 
-  async function onSubmit(data: Record<string, unknown>) {
-    const allSigned = signatoryRoles.every((r) => signatures[r.role]);
-    if (!allSigned) {
-      toast.error("Please complete all required signatures before proceeding");
-      return;
-    }
-
+  async function submitData(data: Record<string, unknown>, skipped: boolean) {
     setSubmitting(true);
     try {
       const res = await fetch("/api/student/form-response", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formTemplateId, data, status: "SUBMITTED" }),
+        body: JSON.stringify({
+          formTemplateId,
+          data: skipped ? { ...data, skipped: true } : data,
+          status: "SUBMITTED",
+        }),
       });
       if (!res.ok) throw new Error("Failed to save");
-      toast.success("Registration form saved!");
+      toast.success(skipped ? "Step completed." : "Registration form saved!");
       onComplete();
     } catch {
       toast.error("Failed to save — please try again");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function onSubmit(data: Record<string, unknown>) {
+    const allSigned = signatoryRoles.every((r) => signatures[r.role]);
+    if (!allSigned) {
+      toast.error("Please complete all required signatures before proceeding");
+      return;
+    }
+    await submitData(data, false);
+  }
+
+  // Skip: submit whatever is currently filled in, bypassing validation.
+  async function handleSkip() {
+    await submitData(watchedValues as Record<string, unknown>, true);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -336,6 +349,10 @@ export function RegistrationForm({
           Submit & Continue
         </Button>
       </div>
+
+      {allowSkip && (
+        <SkipStep onSkip={handleSkip} disabled={submitting} />
+      )}
     </form>
   );
 }

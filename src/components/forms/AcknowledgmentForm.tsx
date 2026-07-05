@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SignatureOtpBlock } from "@/components/signature/SignatureOtpBlock";
+import { SkipStep } from "@/components/forms/SkipStep";
 import { listContainer, listItem } from "@/lib/motion";
 import type { AcknowledgmentSchema } from "@/types";
 
@@ -34,7 +35,8 @@ export function AcknowledgmentForm({
   priorSignatures,
   onComplete,
 }: Props) {
-  const { clauses, acknowledgmentText, guaranteeDeclaration } = schema as AcknowledgmentSchema;
+  const { clauses, acknowledgmentText, guaranteeDeclaration, allowSkip } =
+    schema as AcknowledgmentSchema;
 
   const [acknowledged, setAcknowledged] = useState(
     !!(existingData as { acknowledged?: boolean } | null)?.acknowledged
@@ -47,6 +49,28 @@ export function AcknowledgmentForm({
     setSignatures((prev) => ({ ...prev, ...partial }));
   }
 
+  async function submit(skipped: boolean) {
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/student/form-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formTemplateId,
+          data: { acknowledged, ...(skipped ? { skipped: true } : {}) },
+          status: "SUBMITTED",
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(skipped ? "Step completed." : "Acknowledged and signed!");
+      onComplete();
+    } catch {
+      toast.error("Failed to save — please try again");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!acknowledged) {
       toast.error("Please read and acknowledge the clauses before proceeding");
@@ -57,26 +81,7 @@ export function AcknowledgmentForm({
       toast.error("Please complete all required signatures");
       return;
     }
-
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/student/form-response", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          formTemplateId,
-          data: { acknowledged: true },
-          status: "SUBMITTED",
-        }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success("Acknowledged and signed!");
-      onComplete();
-    } catch {
-      toast.error("Failed to save — please try again");
-    } finally {
-      setSubmitting(false);
-    }
+    await submit(false);
   }
 
   return (
@@ -161,6 +166,10 @@ export function AcknowledgmentForm({
       >
         {isAlreadySubmitted ? "Already Submitted — Continue" : "I Acknowledge & Continue"}
       </Button>
+
+      {allowSkip && !isAlreadySubmitted && (
+        <SkipStep onSkip={() => submit(true)} disabled={submitting} />
+      )}
 
       {isAlreadySubmitted && (
         <Button variant="ghost" size="md" fullWidth onClick={onComplete}>

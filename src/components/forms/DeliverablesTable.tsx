@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { SignatureOtpBlock } from "@/components/signature/SignatureOtpBlock";
+import { SkipStep } from "@/components/forms/SkipStep";
 import { listContainer, listItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { DeliverableTableSchema, DeliverableRow } from "@/types";
@@ -181,7 +182,8 @@ export function DeliverablesTable({
   acknowledgedRowIds,
   onComplete,
 }: Props) {
-  const { rows, declaration, programmeHeader } = schema as DeliverableTableSchema;
+  const { rows, declaration, programmeHeader, allowSkip } =
+    schema as DeliverableTableSchema;
 
   const [ackedRows, setAckedRows] = useState<Set<string>>(
     new Set(acknowledgedRowIds)
@@ -214,6 +216,31 @@ export function DeliverablesTable({
     setSignatures((prev) => ({ ...prev, ...partial }));
   }
 
+  async function submit(skipped: boolean) {
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/student/form-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formTemplateId,
+          data: {
+            allRowsAcknowledged: allAcked,
+            ...(skipped ? { skipped: true, acknowledgedCount: ackedCount } : {}),
+          },
+          status: "SUBMITTED",
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(skipped ? "Step completed." : "Deliverables acknowledged!");
+      onComplete();
+    } catch {
+      toast.error("Failed to save — please try again");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!allAcked) {
       toast.error(`Please acknowledge all ${totalRows} deliverables before proceeding`);
@@ -224,25 +251,7 @@ export function DeliverablesTable({
       toast.error("Please complete all signatures");
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/student/form-response", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          formTemplateId,
-          data: { allRowsAcknowledged: true },
-          status: "SUBMITTED",
-        }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success("Deliverables acknowledged!");
-      onComplete();
-    } catch {
-      toast.error("Failed to save — please try again");
-    } finally {
-      setSubmitting(false);
-    }
+    await submit(false);
   }
 
   return (
@@ -343,6 +352,10 @@ export function DeliverablesTable({
           ? `Acknowledge all ${totalRows - ackedCount} remaining rows to continue`
           : "Submit Acknowledgment & Continue"}
       </Button>
+
+      {allowSkip && !isAlreadySubmitted && !allAcked && (
+        <SkipStep onSkip={() => submit(true)} disabled={submitting} />
+      )}
     </div>
   );
 }

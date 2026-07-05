@@ -46,6 +46,8 @@ export interface FieldDefinition {
 export interface RegistrationSchema {
   fields: FieldDefinition[];
   declaration: string;
+  /** Admin option: students may submit this step incomplete ("Skip for now"). */
+  allowSkip?: boolean;
 }
 
 export interface AcknowledgmentSchema {
@@ -54,6 +56,8 @@ export interface AcknowledgmentSchema {
   guaranteeDeclaration?: string; // for placement undertaking (parent-facing)
   place: { id: string; label: string; required: boolean };
   date: { id: string; label: string; required: boolean; defaultToday?: boolean };
+  /** Admin option: students may submit this step incomplete ("Skip for now"). */
+  allowSkip?: boolean;
 }
 
 export interface DeliverableRow {
@@ -69,6 +73,8 @@ export interface DeliverableTableSchema {
   declaration: string;
   place: { id: string; label: string; required: boolean };
   date: { id: string; label: string; required: boolean; defaultToday?: boolean };
+  /** Admin option: students may submit this step incomplete ("Skip for now"). */
+  allowSkip?: boolean;
 }
 
 export interface DocumentDefinition {
@@ -83,6 +89,11 @@ export interface DocumentDefinition {
 
 export interface DocumentUploadSchema {
   documents: DocumentDefinition[];
+  /**
+   * Admin option: when true, students may complete this step without
+   * uploading all required documents (a "Skip for now" button appears).
+   */
+  allowSkip?: boolean;
 }
 
 export type FormSchema =

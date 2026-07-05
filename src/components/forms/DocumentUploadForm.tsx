@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 
 import { DocumentUpload } from "@/components/upload/DocumentUpload";
+import { SkipStep } from "@/components/forms/SkipStep";
 import { Button } from "@/components/ui/Button";
 import { listContainer, listItem } from "@/lib/motion";
 import type { DocumentUploadSchema } from "@/types";
@@ -30,7 +31,7 @@ export function DocumentUploadForm({
   existingDocuments,
   onComplete,
 }: Props) {
-  const { documents } = schema as DocumentUploadSchema;
+  const { documents, allowSkip } = schema as DocumentUploadSchema;
 
   const existingMap = Object.fromEntries(
     existingDocuments.map((d) => [d.type, { url: d.fileUrl, name: d.fileName }])
@@ -54,11 +55,7 @@ export function DocumentUploadForm({
     setUploadedMap((prev) => ({ ...prev, [docId]: url }));
   }
 
-  async function handleContinue() {
-    if (!allRequiredUploaded) {
-      toast.error("Please upload all required documents before continuing");
-      return;
-    }
+  async function submit(skipped: boolean) {
     setSubmitting(true);
     try {
       // Mark the form response as submitted
@@ -67,18 +64,31 @@ export function DocumentUploadForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           formTemplateId,
-          data: { uploadedDocTypes: Object.keys(uploadedMap) },
+          data: {
+            uploadedDocTypes: Object.keys(uploadedMap),
+            ...(skipped ? { skipped: true } : {}),
+          },
           status: "SUBMITTED",
         }),
       });
       if (!res.ok) throw new Error();
-      toast.success("Documents uploaded successfully!");
+      toast.success(
+        skipped ? "Step completed — you can share the documents with the office later." : "Documents uploaded successfully!"
+      );
       onComplete();
     } catch {
       toast.error("Failed to proceed — please try again");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleContinue() {
+    if (!allRequiredUploaded) {
+      toast.error("Please upload all required documents before continuing");
+      return;
+    }
+    await submit(false);
   }
 
   return (
@@ -146,6 +156,15 @@ export function DocumentUploadForm({
           ? "Continue to Review"
           : `${requiredDocs.length - uploadedCount} document(s) remaining`}
       </Button>
+
+      {/* Admin-enabled skip: complete the step without all required uploads. */}
+      {allowSkip && !allRequiredUploaded && (
+        <SkipStep
+          onSkip={() => submit(true)}
+          disabled={submitting}
+          note="You can submit the missing documents to the Admissions Office later."
+        />
+      )}
     </div>
   );
 }

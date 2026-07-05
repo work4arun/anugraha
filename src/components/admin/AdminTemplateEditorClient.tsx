@@ -113,6 +113,7 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
       maxSizeMB: Number(d.maxSizeMB ?? 5),
     }))
   );
+  const [allowSkip, setAllowSkip] = useState(Boolean(template.schema.allowSkip));
 
   // ── build schema for save ──────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
       case "REGISTRATION":
         return {
           ...template.schema,
+          allowSkip,
           fields: fields.map((f) => ({
             id: f.id || slugify(f.label).replace(/-/g, "_"),
             label: f.label,
@@ -139,12 +141,14 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
       case "ACKNOWLEDGMENT":
         return {
           ...template.schema,
+          allowSkip,
           clauses: clauses.map((c) => c.trim()).filter(Boolean),
           acknowledgmentText: ackText,
         };
       case "DELIVERABLES_TABLE":
         return {
           ...template.schema,
+          allowSkip,
           programmeHeader: {
             label: "Programme",
             value: programmeValue,
@@ -160,6 +164,7 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
       case "DOCUMENT_UPLOAD":
         return {
           ...template.schema,
+          allowSkip,
           documents: docs.map((d, i) => ({
             id: d.id || `doc-${i + 1}`,
             type: d.id || `doc-${i + 1}`,
@@ -251,6 +256,21 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Optional short description"
               />
+              <label className="flex items-start gap-2.5 text-sm text-ink cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allowSkip}
+                  onChange={(e) => setAllowSkip(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Allow students to skip this step</span>
+                  <span className="block text-xs text-ink-muted mt-0.5">
+                    Students can complete the step without filling everything in.
+                    Skipped submissions are flagged so you can follow up.
+                  </span>
+                </span>
+              </label>
             </Card>
           </motion.div>
 
