@@ -9,7 +9,7 @@
  * with { values } keyed by field id. Signed agreements show the completed PDF.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   FileSignature,
@@ -19,6 +19,109 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+
+// pdf.js worker (same pinned version as the admin placement editor).
+const PDF_WORKER_SRC =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/**
+ * Inline, scrollable render of the agreement PDF. Calls `onReadThrough` once
+ * the student has scrolled to the end (or immediately, if the whole document
+ * fits without scrolling / the preview fails and the View link is the backup).
+ */
+function AgreementInlinePreview({
+  url,
+  onReadThrough,
+}: {
+  url: string;
+  onReadThrough: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pagesRef = useRef<HTMLDivElement>(null);
+  const firedRef = useRef(false);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  const fire = useCallback(() => {
+    if (!firedRef.current) {
+      firedRef.current = true;
+      onReadThrough();
+    }
+  }, [onReadThrough]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+        const doc = await pdfjs.getDocument({ url }).promise;
+        if (cancelled) return;
+        const host = pagesRef.current;
+        if (!host) return;
+        host.innerHTML = "";
+        const cssWidth = Math.min(host.clientWidth || 560, 800);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        for (let i = 1; i <= doc.numPages; i++) {
+          const page = await doc.getPage(i);
+          if (cancelled) return;
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: (cssWidth / base.width) * dpr });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = "100%";
+          canvas.style.display = "block";
+          canvas.style.borderBottom = "1px solid #E5E7EB";
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          host.appendChild(canvas);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+        }
+        if (cancelled) return;
+        setStatus("ready");
+        // Whole document visible without scrolling → counts as read.
+        requestAnimationFrame(() => {
+          const el = scrollRef.current;
+          if (el && el.scrollHeight <= el.clientHeight + 8) fire();
+        });
+      } catch (err) {
+        console.error("[agreements] inline preview failed", err);
+        if (!cancelled) {
+          setStatus("error");
+          // Don't lock the student out of signing over a render issue — the
+          // "View" link remains as the way to read the document.
+          fire();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [url, fire]);
+
+  return (
+    <div className="mt-3 border border-surface-border rounded-xl overflow-hidden">
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24) fire();
+        }}
+        className="max-h-[420px] overflow-y-auto bg-surface-muted"
+      >
+        <div ref={pagesRef} />
+        {status === "loading" && (
+          <p className="p-8 text-center text-xs text-ink-muted">Loading agreement…</p>
+        )}
+        {status === "error" && (
+          <p className="p-8 text-center text-xs text-error">
+            Could not load the preview — use the View link above to read the agreement.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface InputField {
   id: string;
@@ -46,6 +149,8 @@ export function AgreementsCard() {
   const [agreements, setAgreements] = useState<AgreementItem[] | null>(null);
   const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [signingId, setSigningId] = useState<string | null>(null);
+  // Agreements the student has scrolled through to the end (gates the Sign button).
+  const [readIds, setReadIds] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
@@ -181,6 +286,12 @@ export function AgreementsCard() {
 
               {!done && (
                 <>
+                  <AgreementInlinePreview
+                    url={a.originalPdfUrl}
+                    onReadThrough={() =>
+                      setReadIds((r) => (r[a.id] ? r : { ...r, [a.id]: true }))
+                    }
+                  />
                   {a.inputFields.length > 0 && (
                     <div className="mt-3 flex flex-col gap-2.5 border-t border-surface-border pt-3">
                       {a.inputFields.map((f) =>
@@ -248,7 +359,7 @@ export function AgreementsCard() {
                     fullWidth
                     className="mt-3"
                     onClick={() => sign(a)}
-                    disabled={signingId !== null}
+                    disabled={signingId !== null || !readIds[a.id]}
                     icon={
                       signingId === a.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -259,6 +370,11 @@ export function AgreementsCard() {
                   >
                     {signingId === a.id ? "Signing…" : "Sign agreement"}
                   </Button>
+                  {!readIds[a.id] && (
+                    <p className="mt-1.5 text-center text-[11px] text-ink-muted">
+                      Scroll to the end of the agreement above to enable signing.
+                    </p>
+                  )}
                 </>
               )}
             </div>
