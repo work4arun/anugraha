@@ -2,7 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Plus, Save, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Save,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  PenLine,
+  CheckSquare,
+  CalendarDays,
+  Type,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 
@@ -11,10 +22,14 @@ const PDF_WORKER_SRC =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 type SignerRole = "student" | "parent";
+type FieldType = "SIGNATURE" | "CHECKBOX" | "DATE" | "TEXT";
 
 interface Field {
   key: string;          // stable client id
   signerRole: SignerRole;
+  fieldType: FieldType;
+  label: string;        // prompt for TEXT/CHECKBOX (e.g. "Full name")
+  required: boolean;
   page: number;         // 1-based
   x: number;            // normalized 0..1, top-left origin
   y: number;
@@ -31,6 +46,9 @@ interface AgreementData {
   fields: Array<{
     id: string;
     signerRole: string;
+    fieldType?: string;
+    label?: string | null;
+    required?: boolean;
     page: number;
     x: number;
     y: number;
@@ -43,6 +61,26 @@ const ROLE_STYLE: Record<SignerRole, { label: string; bg: string; border: string
   student: { label: "Student", bg: "rgba(37,138,221,0.18)", border: "#258ADD", text: "#0C447C" },
   parent: { label: "Parent / Guardian", bg: "rgba(99,153,34,0.18)", border: "#639922", text: "#27500A" },
 };
+
+const TYPE_META: Record<FieldType, { label: string; defaultW: number; defaultH: number; minW: number; minH: number }> = {
+  SIGNATURE: { label: "Signature", defaultW: 0.25, defaultH: 0.08, minW: 0.05, minH: 0.03 },
+  CHECKBOX:  { label: "Checkbox",  defaultW: 0.035, defaultH: 0.025, minW: 0.015, minH: 0.012 },
+  DATE:      { label: "Date signed", defaultW: 0.16, defaultH: 0.035, minW: 0.06, minH: 0.02 },
+  TEXT:      { label: "Text", defaultW: 0.25, defaultH: 0.04, minW: 0.06, minH: 0.02 },
+};
+
+function typeIcon(t: FieldType, className: string) {
+  switch (t) {
+    case "SIGNATURE": return <PenLine className={className} />;
+    case "CHECKBOX": return <CheckSquare className={className} />;
+    case "DATE": return <CalendarDays className={className} />;
+    case "TEXT": return <Type className={className} />;
+  }
+}
+
+function asFieldType(v: unknown): FieldType {
+  return v === "CHECKBOX" || v === "DATE" || v === "TEXT" ? v : "SIGNATURE";
+}
 
 let _keySeq = 0;
 const nextKey = () => `f${Date.now()}_${_keySeq++}`;
@@ -68,6 +106,9 @@ export function AgreementEditorClient({
     agreement.fields.map((f) => ({
       key: nextKey(),
       signerRole: (f.signerRole === "parent" ? "parent" : "student") as SignerRole,
+      fieldType: asFieldType(f.fieldType),
+      label: f.label ?? "",
+      required: f.required !== false,
       page: f.page,
       x: f.x,
       y: f.y,
@@ -75,6 +116,7 @@ export function AgreementEditorClient({
       height: f.height,
     }))
   );
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   // ── Load the PDF once ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -185,8 +227,9 @@ export function AgreementEditorClient({
           const y = Math.min(Math.max(d.origY + dy, 0), 1 - f.height);
           return { ...f, x, y };
         }
-        const width = Math.min(Math.max(d.origW + dx, 0.05), 1 - f.x);
-        const height = Math.min(Math.max(d.origH + dy, 0.03), 1 - f.y);
+        const meta = TYPE_META[f.fieldType];
+        const width = Math.min(Math.max(d.origW + dx, meta.minW), 1 - f.x);
+        const height = Math.min(Math.max(d.origH + dy, meta.minH), 1 - f.y);
         return { ...f, width, height };
       })
     );
@@ -198,15 +241,34 @@ export function AgreementEditorClient({
     window.removeEventListener("mouseup", endDrag);
   }, [onDragMove]);
 
-  function addField(role: SignerRole) {
+  function addField(role: SignerRole, fieldType: FieldType = "SIGNATURE") {
+    const meta = TYPE_META[fieldType];
+    const key = nextKey();
     setFields((prev) => [
       ...prev,
-      { key: nextKey(), signerRole: role, page, x: 0.35, y: 0.45, width: 0.25, height: 0.08 },
+      {
+        key,
+        signerRole: role,
+        fieldType,
+        label: "",
+        required: true,
+        page,
+        x: 0.35,
+        y: 0.45,
+        width: meta.defaultW,
+        height: meta.defaultH,
+      },
     ]);
+    setSelectedKey(key);
   }
 
   function removeField(key: string) {
     setFields((prev) => prev.filter((f) => f.key !== key));
+    setSelectedKey((k) => (k === key ? null : k));
+  }
+
+  function updateField(key: string, patch: Partial<Field>) {
+    setFields((prev) => prev.map((f) => (f.key === key ? { ...f, ...patch } : f)));
   }
 
   async function save() {
@@ -218,6 +280,9 @@ export function AgreementEditorClient({
         body: JSON.stringify({
           fields: fields.map((f) => ({
             signerRole: f.signerRole,
+            fieldType: f.fieldType,
+            label: f.label || undefined,
+            required: f.required,
             page: f.page,
             x: f.x,
             y: f.y,
@@ -228,7 +293,7 @@ export function AgreementEditorClient({
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error);
-      toast.success(`Saved ${data.data.count} signature field${data.data.count === 1 ? "" : "s"}`);
+      toast.success(`Saved ${data.data.count} field${data.data.count === 1 ? "" : "s"}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save");
     } finally {
@@ -269,28 +334,84 @@ export function AgreementEditorClient({
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         {canManage && (
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => addField("student")}
-              style={{ borderColor: ROLE_STYLE.student.border, color: ROLE_STYLE.student.text }}
-            >
-              Add student signature
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => addField("parent")}
-              style={{ borderColor: ROLE_STYLE.parent.border, color: ROLE_STYLE.parent.text }}
-            >
-              Add parent signature
-            </Button>
-            <span className="text-xs text-ink-muted ml-auto">
-              Drag a box to move it; drag its corner to resize. It lands where the signer signs.
-            </span>
+          <div className="mb-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => addField("student", "SIGNATURE")}
+                style={{ borderColor: ROLE_STYLE.student.border, color: ROLE_STYLE.student.text }}
+              >
+                Student signature
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => addField("parent", "SIGNATURE")}
+                style={{ borderColor: ROLE_STYLE.parent.border, color: ROLE_STYLE.parent.text }}
+              >
+                Parent signature
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<CheckSquare className="w-4 h-4" />}
+                onClick={() => addField("student", "CHECKBOX")}
+              >
+                Checkbox
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<CalendarDays className="w-4 h-4" />}
+                onClick={() => addField("student", "DATE")}
+              >
+                Date signed
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Type className="w-4 h-4" />}
+                onClick={() => addField("student", "TEXT")}
+              >
+                Text
+              </Button>
+              <span className="text-xs text-ink-muted ml-auto">
+                Drag to move; drag the corner to resize. Date fields auto-fill on signing.
+              </span>
+            </div>
+
+            {/* Properties for the selected TEXT/CHECKBOX field */}
+            {(() => {
+              const sel = fields.find((f) => f.key === selectedKey);
+              if (!sel || (sel.fieldType !== "TEXT" && sel.fieldType !== "CHECKBOX")) return null;
+              return (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-surface-border bg-white px-3 py-2">
+                  <span className="text-xs font-medium text-ink flex items-center gap-1">
+                    {typeIcon(sel.fieldType, "w-3.5 h-3.5")}
+                    {TYPE_META[sel.fieldType].label} field
+                  </span>
+                  <input
+                    type="text"
+                    value={sel.label}
+                    onChange={(e) => updateField(sel.key, { label: e.target.value })}
+                    placeholder={sel.fieldType === "TEXT" ? "Label, e.g. Full name" : "Label, e.g. I agree to the terms"}
+                    className="flex-1 min-w-[200px] text-sm border border-surface-border rounded-lg px-2 py-1.5"
+                    maxLength={120}
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted select-none">
+                    <input
+                      type="checkbox"
+                      checked={sel.required}
+                      onChange={(e) => updateField(sel.key, { required: e.target.checked })}
+                    />
+                    Required
+                  </label>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -328,10 +449,18 @@ export function AgreementEditorClient({
             >
               {pageFields.map((f) => {
                 const s = ROLE_STYLE[f.signerRole];
+                const isSelected = f.key === selectedKey;
+                const tag =
+                  f.fieldType === "SIGNATURE"
+                    ? s.label
+                    : f.label || TYPE_META[f.fieldType].label;
                 return (
                   <div
                     key={f.key}
-                    onMouseDown={(e) => beginDrag(e, f, "move")}
+                    onMouseDown={(e) => {
+                      setSelectedKey(f.key);
+                      beginDrag(e, f, "move");
+                    }}
                     className="absolute select-none"
                     style={{
                       left: f.x * canvasSize.w,
@@ -339,16 +468,19 @@ export function AgreementEditorClient({
                       width: f.width * canvasSize.w,
                       height: f.height * canvasSize.h,
                       background: s.bg,
-                      border: `1.5px solid ${s.border}`,
+                      border: `${isSelected ? 2 : 1.5}px ${f.fieldType === "SIGNATURE" ? "solid" : "dashed"} ${s.border}`,
                       borderRadius: 4,
                       cursor: canManage ? "move" : "default",
+                      boxShadow: isSelected ? `0 0 0 2px ${s.bg}` : undefined,
                     }}
                   >
                     <span
-                      className="absolute top-0 left-0 px-1 text-[10px] font-medium"
+                      className="absolute top-0 left-0 px-1 text-[10px] font-medium flex items-center gap-0.5 whitespace-nowrap overflow-hidden max-w-full"
                       style={{ color: s.text }}
                     >
-                      {s.label}
+                      {typeIcon(f.fieldType, "w-2.5 h-2.5 shrink-0")}
+                      {tag}
+                      {f.fieldType !== "SIGNATURE" && f.fieldType !== "DATE" && f.required ? " *" : ""}
                     </span>
                     {canManage && (
                       <>

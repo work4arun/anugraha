@@ -1,8 +1,9 @@
 /**
  * PUT /api/admin/agreements/[id]/fields
  *
- * Replaces the full set of signature-placeholder fields for an agreement.
- * Body: { fields: Array<{ signerRole, page, x, y, width, height }> }
+ * Replaces the full set of placed fields for an agreement.
+ * Body: { fields: Array<{ signerRole, fieldType?, label?, required?, page, x, y, width, height }> }
+ * fieldType: SIGNATURE (default) | CHECKBOX | DATE | TEXT — DocuSign-style.
  * Coordinates are normalized (0..1), origin top-left of the page.
  */
 
@@ -14,6 +15,9 @@ import { canManageBatch } from "@/lib/authz";
 
 interface FieldInput {
   signerRole: string;
+  fieldType?: string;
+  label?: string;
+  required?: boolean;
   page: number;
   x: number;
   y: number;
@@ -22,6 +26,13 @@ interface FieldInput {
 }
 
 const clamp01 = (n: number) => Math.min(Math.max(Number(n) || 0, 0), 1);
+
+const FIELD_TYPES = ["SIGNATURE", "CHECKBOX", "DATE", "TEXT"] as const;
+type FieldType = (typeof FIELD_TYPES)[number];
+
+function asFieldType(v: unknown): FieldType {
+  return FIELD_TYPES.includes(v as FieldType) ? (v as FieldType) : "SIGNATURE";
+}
 
 export async function PUT(
   req: NextRequest,
@@ -56,6 +67,9 @@ export async function PUT(
     .map((f, i) => ({
       agreementTemplateId: agreement.id,
       signerRole: f.signerRole,
+      fieldType: asFieldType(f.fieldType),
+      label: typeof f.label === "string" ? f.label.slice(0, 120) : null,
+      required: f.required !== false,
       page: Math.max(1, Math.min(Math.round(f.page), agreement.pageCount)),
       x: clamp01(f.x),
       y: clamp01(f.y),

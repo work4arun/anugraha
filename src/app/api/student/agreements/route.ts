@@ -24,7 +24,17 @@ export async function GET() {
     where: { batchId, isActive: true },
     orderBy: { createdAt: "asc" },
     include: {
-      fields: { select: { signerRole: true } },
+      fields: {
+        select: {
+          id: true,
+          signerRole: true,
+          fieldType: true,
+          label: true,
+          required: true,
+          page: true,
+        },
+        orderBy: { order: "asc" },
+      },
       signedAgreements: { where: { studentId } },
     },
   });
@@ -38,7 +48,20 @@ export async function GET() {
         name: a.name,
         pageCount: a.pageCount,
         originalPdfUrl: a.originalPdfUrl,
-        roles: Array.from(new Set(a.fields.map((f) => f.signerRole))),
+        roles: Array.from(
+          new Set(a.fields.filter((f) => f.fieldType === "SIGNATURE").map((f) => f.signerRole))
+        ),
+        // CHECKBOX/TEXT need input from the student at signing time (send
+        // them back as `values` keyed by field id); DATE is auto-filled.
+        inputFields: a.fields
+          .filter((f) => f.fieldType === "CHECKBOX" || f.fieldType === "TEXT")
+          .map((f) => ({
+            id: f.id,
+            fieldType: f.fieldType,
+            label: f.label,
+            required: f.required,
+            page: f.page,
+          })),
         status: signed?.status ?? "PENDING",
         signedPdfUrl: signed?.signedPdfUrl ?? null,
         signedAt: signed?.signedAt ?? null,

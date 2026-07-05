@@ -39,18 +39,23 @@ export async function GET(
   const uploadDir = process.env.LOCAL_UPLOAD_DIR ?? "./uploads";
   const filePath = path.join(uploadDir, ...params.path);
 
-  // Prevent path traversal
+  // Prevent path traversal. Note: a plain startsWith() would also match
+  // sibling directories (e.g. "/srv/uploads-x" matches "/srv/uploads"), so
+  // compare via path.relative instead.
   const resolvedUploadDir = path.resolve(uploadDir);
   const resolvedFilePath = path.resolve(filePath);
-  if (!resolvedFilePath.startsWith(resolvedUploadDir)) {
+  const rel = path.relative(resolvedUploadDir, resolvedFilePath);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (!fs.existsSync(resolvedFilePath)) {
+  let fileBuffer: Buffer;
+  try {
+    fileBuffer = await fs.promises.readFile(resolvedFilePath);
+  } catch {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const fileBuffer = fs.readFileSync(resolvedFilePath);
   const ext = path.extname(resolvedFilePath).toLowerCase();
   const mimeMap: Record<string, string> = {
     ".png": "image/png",
@@ -62,12 +67,19 @@ export async function GET(
   };
   const contentType = mimeMap[ext] ?? "application/octet-stream";
 
-  return new NextResponse(fileBuffer, {
+  // SVG can carry scripts — never render it inline in our origin.
+  // CSP sandbox + attachment disposition neutralises stored-XSS via uploads.
+  const isSvg = ext === ".svg";
+
+  return new NextResponse(new Uint8Array(fileBuffer), {
     status: 200,
     headers: {
       "Content-Type": contentType,
-      // Preview PDFs/images in the browser tab instead of forcing a download.
-      "Content-Disposition": `inline; filename="${path.basename(resolvedFilePath)}"`,
+      // Preview PDFs/images in the browser tab instead of forcing a download
+      // (except SVG, which is downloaded rather than executed).
+      "Content-Disposition": `${isSvg ? "attachment" : "inline"}; filename="${path.basename(resolvedFilePath)}"`,
+      "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+      "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=3600",
     },
   });

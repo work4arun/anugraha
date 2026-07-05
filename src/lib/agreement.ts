@@ -10,7 +10,7 @@
  * origin is BOTTOM-LEFT, so we flip the y-axis when drawing.
  */
 
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { prisma } from "./prisma";
 import { uploadFile, readFileBuffer, resolveToDataUri } from "./storage";
 
@@ -20,6 +20,14 @@ export interface SignerImage {
   /** PNG signature — a data URI or a stored url/key readable by storage. */
   image: string;
 }
+
+/**
+ * Values for non-signature fields, keyed by AgreementSignatureField.id:
+ *   CHECKBOX → boolean (true = ticked)
+ *   TEXT     → string typed by the student
+ *   DATE     → ignored; always stamped with the signing date
+ */
+export type FieldValues = Record<string, string | boolean>;
 
 function dataUriToBytes(dataUri: string): Uint8Array {
   const base64 = dataUri.includes(",") ? dataUri.slice(dataUri.indexOf(",") + 1) : dataUri;
@@ -48,7 +56,8 @@ async function loadPngBytes(image: string): Promise<Uint8Array | null> {
 export async function stampAgreement(
   studentId: string,
   agreementTemplateId: string,
-  signers: SignerImage[]
+  signers: SignerImage[],
+  values: FieldValues = {}
 ): Promise<{ url: string; stamped: number }> {
   const template = await prisma.agreementTemplate.findUnique({
     where: { id: agreementTemplateId },
@@ -73,11 +82,16 @@ export async function stampAgreement(
     }
   }
 
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const ink = rgb(0.07, 0.09, 0.15);
+  const signingDate = new Date().toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
   let stamped = 0;
   for (const field of template.fields) {
-    const png = pngByRole.get(field.signerRole);
-    if (!png) continue; // this signer hasn't signed yet
-
     const pageIndex = Math.min(Math.max(field.page - 1, 0), pages.length - 1);
     const page = pages[pageIndex];
     const { width: pw, height: ph } = page.getSize();
@@ -88,14 +102,73 @@ export async function stampAgreement(
     // Flip Y: normalized y is from the top; pdf-lib draws from the bottom.
     const boxY = ph - field.y * ph - boxH;
 
-    // Fit the signature inside the box, preserving aspect ratio, centered.
-    const scale = Math.min(boxW / png.width, boxH / png.height);
-    const drawW = png.width * scale;
-    const drawH = png.height * scale;
-    const drawX = boxX + (boxW - drawW) / 2;
-    const drawY = boxY + (boxH - drawH) / 2;
+    if (field.fieldType === "SIGNATURE") {
+      const png = pngByRole.get(field.signerRole);
+      if (!png) continue; // this signer hasn't signed yet
 
-    page.drawImage(png, { x: drawX, y: drawY, width: drawW, height: drawH });
+      // Fit the signature inside the box, preserving aspect ratio, centered.
+      const scale = Math.min(boxW / png.width, boxH / png.height);
+      const drawW = png.width * scale;
+      const drawH = png.height * scale;
+      const drawX = boxX + (boxW - drawW) / 2;
+      const drawY = boxY + (boxH - drawH) / 2;
+
+      page.drawImage(png, { x: drawX, y: drawY, width: drawW, height: drawH });
+      stamped++;
+      continue;
+    }
+
+    if (field.fieldType === "CHECKBOX") {
+      if (values[field.id] !== true) continue; // not ticked
+      // Draw a ✓ as two strokes, fitted inside the box.
+      const s = Math.min(boxW, boxH);
+      const cx = boxX + boxW / 2;
+      const cy = boxY + boxH / 2;
+      const t = Math.max(s * 0.12, 1);
+      page.drawLine({
+        start: { x: cx - s * 0.32, y: cy + s * 0.02 },
+        end: { x: cx - s * 0.08, y: cy - s * 0.26 },
+        thickness: t,
+        color: ink,
+      });
+      page.drawLine({
+        start: { x: cx - s * 0.08, y: cy - s * 0.26 },
+        end: { x: cx + s * 0.36, y: cy + s * 0.3 },
+        thickness: t,
+        color: ink,
+      });
+      stamped++;
+      continue;
+    }
+
+    // DATE (auto signing date) and TEXT (student-typed value).
+    let text =
+      field.fieldType === "DATE"
+        ? signingDate
+        : String(values[field.id] ?? "").trim();
+    if (!text) continue;
+
+    // Helvetica can only encode WinAnsi — strip characters it can't draw
+    // (e.g. Tamil script) rather than throwing and failing the whole PDF.
+    try {
+      font.widthOfTextAtSize(text, 10);
+    } catch {
+      text = text.replace(/[^\x20-\x7E]/g, "").trim();
+      if (!text) continue;
+    }
+
+    // Fit the font size to the box: start from the height, shrink to fit width.
+    let size = Math.min(boxH * 0.72, 14);
+    const maxW = boxW * 0.96;
+    while (size > 5 && font.widthOfTextAtSize(text, size) > maxW) size -= 0.5;
+
+    page.drawText(text, {
+      x: boxX + (boxW - font.widthOfTextAtSize(text, size)) / 2,
+      y: boxY + (boxH - size) / 2 + size * 0.12,
+      size,
+      font,
+      color: ink,
+    });
     stamped++;
   }
 

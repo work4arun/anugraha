@@ -371,7 +371,7 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
                 variant="secondary"
                 size="lg"
                 fullWidth
-                onClick={() => router.push("/admin/batches")}
+                onClick={() => router.push("/admin/reports")}
                 icon={<BarChart3 className="w-5 h-5" />}
               >
                 Batch Reports

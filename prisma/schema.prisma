@@ -317,6 +317,9 @@ model Document {
   uploadedAt     DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // One row per document type per student — prevents duplicate rows when a
+  // double-click fires two concurrent uploads.
+  @@unique([studentId, documentType])
   @@map("documents")
 }
 
@@ -424,6 +427,13 @@ model AgreementTemplate {
   @@map("agreement_templates")
 }
 
+enum AgreementFieldType {
+  SIGNATURE // stamped from the signer's saved signature image
+  CHECKBOX  // ticked by the student at signing time
+  DATE      // auto-filled with the signing date
+  TEXT      // typed by the student at signing time
+}
+
 model AgreementSignatureField {
   id                  String            @id @default(cuid())
   agreementTemplateId String
@@ -431,6 +441,12 @@ model AgreementSignatureField {
 
   // Which signatory this box belongs to, e.g. "student" | "parent".
   signerRole          String
+  // What goes in the box (DocuSign-style field types).
+  fieldType           AgreementFieldType @default(SIGNATURE)
+  // Prompt shown to the student for TEXT/CHECKBOX fields, e.g. "Full name".
+  label               String?
+  // Must be completed before the agreement can be signed (TEXT/CHECKBOX).
+  required            Boolean           @default(true)
   // 1-based page number the box sits on.
   page                Int
   // Normalized geometry (0..1) relative to the page, origin at top-left. Kept

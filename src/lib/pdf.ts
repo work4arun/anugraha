@@ -13,6 +13,29 @@ interface PdfGenerationResult {
   filename: string;
 }
 
+// ── Concurrency limiter ──────────────────────────────────────────────────────
+// Each PDF render launches a Chromium instance (~300 MB). Without a cap, a
+// burst of students clicking "Generate PDF" simultaneously would exhaust
+// memory. Allow a few renders at once; queue the rest (FIFO).
+const MAX_CONCURRENT_PDF = Number(process.env.PDF_MAX_CONCURRENCY ?? 2);
+let activePdfJobs = 0;
+const pdfQueue: Array<() => void> = [];
+
+async function acquirePdfSlot(): Promise<void> {
+  if (activePdfJobs < MAX_CONCURRENT_PDF) {
+    activePdfJobs++;
+    return;
+  }
+  await new Promise<void>((resolve) => pdfQueue.push(resolve));
+  activePdfJobs++;
+}
+
+function releasePdfSlot(): void {
+  activePdfJobs--;
+  const next = pdfQueue.shift();
+  if (next) next();
+}
+
 /**
  * Launch a Chromium instance that works both locally and on serverless hosts.
  *
@@ -116,30 +139,38 @@ export async function generateStudentPdf(
 
   const html = buildPdfHtml(embeddedStudent);
 
-  // ── Launch Puppeteer (serverless-aware) ───────────────────────────────────
-  const browser = await launchBrowser();
+  // ── Launch Puppeteer (serverless-aware, capped concurrency) ───────────────
+  await acquirePdfSlot();
+  let pdfBuffer: Uint8Array;
+  try {
+    const browser = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      // Images are inlined as data URIs, so the document has no external requests —
+      // `load` fires immediately and we still cap it with an explicit timeout.
+      await page.setContent(html, { waitUntil: "load", timeout: 30000 });
 
-  const page = await browser.newPage();
-  // Images are inlined as data URIs, so the document has no external requests —
-  // `load` fires immediately and we still cap it with an explicit timeout.
-  await page.setContent(html, { waitUntil: "load", timeout: 30000 });
-
-  const pdfBuffer = await page.pdf({
-    format: "A4",
-    printBackground: true,
-    margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
-    displayHeaderFooter: true,
-    headerTemplate: `
-      <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
-        Rathinam Anugraha 2026 — ${student.name} (${student.regNo}) — CONFIDENTIAL
-      </div>`,
-    footerTemplate: `
-      <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
-        Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-      </div>`,
-  });
-
-  await browser.close();
+      pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
+        displayHeaderFooter: true,
+        headerTemplate: `
+          <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+            Rathinam Anugraha 2026 — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
+          </div>`,
+        footerTemplate: `
+          <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+            Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+          </div>`,
+      });
+    } finally {
+      // Always close the browser — a leaked Chromium instance holds ~300 MB.
+      await browser.close().catch(() => {});
+    }
+  } finally {
+    releasePdfSlot();
+  }
 
   // ── Upload PDF ────────────────────────────────────────────────────────────
   const filename = pdfFilename(student.regNo, student.name);
@@ -170,6 +201,18 @@ export async function generateStudentPdf(
   });
 
   return { url, filename };
+}
+
+// ── HTML escaping ─────────────────────────────────────────────────────────────
+
+/** Escape a value for safe interpolation into the PDF HTML template. */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── HTML builder ──────────────────────────────────────────────────────────────

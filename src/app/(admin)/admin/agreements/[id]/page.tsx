@@ -36,6 +36,9 @@ export default async function AgreementEditorPage({
         fields: agreement.fields.map((f) => ({
           id: f.id,
           signerRole: f.signerRole,
+          fieldType: f.fieldType,
+          label: f.label,
+          required: f.required,
           page: f.page,
           x: f.x,
           y: f.y,

@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { stampAgreement, collectStudentSignatures } from "@/lib/agreement";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -25,6 +25,13 @@ export async function POST(
   const studentId = session.user.id;
 
   try {
+    // Optional body: { values: { [fieldId]: string | boolean } } for
+    // CHECKBOX/TEXT fields (DATE fields auto-fill with the signing date).
+    const body = (await req.json().catch(() => ({}))) as {
+      values?: Record<string, unknown>;
+    };
+    const rawValues = body.values && typeof body.values === "object" ? body.values : {};
+
     const agreement = await prisma.agreementTemplate.findUnique({
       where: { id: params.id },
       include: { fields: true },
@@ -37,16 +44,44 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const roles = Array.from(new Set(agreement.fields.map((f) => f.signerRole)));
-    if (roles.length === 0) {
+    const signatureFields = agreement.fields.filter((f) => f.fieldType === "SIGNATURE");
+    const roles = Array.from(new Set(signatureFields.map((f) => f.signerRole)));
+    if (agreement.fields.length === 0) {
       return NextResponse.json(
-        { success: false, error: "This agreement has no signature fields yet" },
+        { success: false, error: "This agreement has no fields yet" },
         { status: 409 }
       );
     }
 
-    const signers = await collectStudentSignatures(studentId, roles);
-    if (signers.length === 0) {
+    // Sanitize values: only accept entries for this agreement's own
+    // CHECKBOX/TEXT fields, with the right type for each.
+    const values: Record<string, string | boolean> = {};
+    const missing: string[] = [];
+    for (const f of agreement.fields) {
+      if (f.fieldType === "CHECKBOX") {
+        const v = rawValues[f.id] === true;
+        values[f.id] = v;
+        if (f.required && !v) missing.push(f.label || "checkbox");
+      } else if (f.fieldType === "TEXT") {
+        const v = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim().slice(0, 200) : "";
+        values[f.id] = v;
+        if (f.required && !v) missing.push(f.label || "text field");
+      }
+    }
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "MISSING_FIELDS",
+          error: `Please complete: ${missing.join(", ")}`,
+          missing,
+        },
+        { status: 400 }
+      );
+    }
+
+    const signers = roles.length ? await collectStudentSignatures(studentId, roles) : [];
+    if (roles.length > 0 && signers.length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -57,7 +92,7 @@ export async function POST(
       );
     }
 
-    const { url, stamped } = await stampAgreement(studentId, agreement.id, signers);
+    const { url, stamped } = await stampAgreement(studentId, agreement.id, signers, values);
     const signedRoles = new Set(signers.map((s) => s.role));
     const allSigned = roles.every((r) => signedRoles.has(r));
 

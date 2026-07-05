@@ -26,6 +26,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "formTemplateId required" }, { status: 400 });
     }
 
+    // Validate status — an arbitrary string would throw a Prisma enum error (500).
+    if (status !== "DRAFT" && status !== "SUBMITTED") {
+      return NextResponse.json(
+        { success: false, error: "status must be DRAFT or SUBMITTED" },
+        { status: 400 }
+      );
+    }
+
+    // The form must actually be assigned to the student's batch.
+    const assignment = await prisma.batchFormAssignment.findFirst({
+      where: { formTemplateId, batch: { students: { some: { id: studentId } } } },
+      select: { id: true },
+    });
+    if (!assignment) {
+      return NextResponse.json(
+        { success: false, error: "This form is not assigned to you" },
+        { status: 403 }
+      );
+    }
+
+    // Once submitted, a response is locked — only an admin reset
+    // (students/[id]/reset-form) reopens it.
+    const existing = await prisma.studentFormResponse.findUnique({
+      where: { studentId_formTemplateId: { studentId, formTemplateId } },
+      select: { status: true },
+    });
+    if (existing?.status === "SUBMITTED") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "LOCKED",
+          error: "This form has already been submitted. Contact the office if it needs changes.",
+        },
+        { status: 409 }
+      );
+    }
+
     const now = new Date();
     const response = await prisma.studentFormResponse.upsert({
       where: {

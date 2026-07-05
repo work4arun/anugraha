@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Badge } from "@/components/ui/Badge";
+import { AgreementsCard } from "@/components/student/AgreementsCard";
 import { fadeSlideUp, listContainer, listItem } from "@/lib/motion";
 import type { StudentProfile, InductionStep, StepStatus } from "@/types";
 import { cn } from "@/lib/utils";
@@ -273,6 +274,9 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
             ))}
           </motion.div>
         </div>
+
+        {/* Agreements — admin-placed signature/checkbox/date/text fields */}
+        <AgreementsCard />
 
         {/* Institution info */}
         <motion.div

@@ -35,6 +35,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate type — whitelist only. SVG is deliberately excluded: it can
+    // contain scripts and would be a stored-XSS vector when previewed inline.
+    const ALLOWED: Record<string, string[]> = {
+      "application/pdf": [".pdf"],
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/png": [".png"],
+      "image/webp": [".webp"],
+    };
+    const extMatch = /\.[a-z0-9]+$/i.exec(file.name);
+    const ext = extMatch ? extMatch[0].toLowerCase() : "";
+    if (!ALLOWED[file.type] || !ALLOWED[file.type].includes(ext)) {
+      return NextResponse.json(
+        { success: false, error: "Only PDF, JPG, PNG or WEBP files are allowed" },
+        { status: 400 }
+      );
+    }
+
     // Convert File to Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -48,39 +65,35 @@ export async function POST(req: NextRequest) {
       "documents"
     );
 
-    // Create/update document record
-    const existing = await prisma.document.findFirst({
-      where: { studentId, documentType: documentId },
+    // Create/update document record. Atomic upsert on the (studentId,
+    // documentType) unique key — no findFirst/create race on double-click.
+    const doc = await prisma.document.upsert({
+      where: {
+        studentId_documentType: { studentId, documentType: documentId },
+      },
+      update: {
+        fileUrl: url,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploadStatus: "UPLOADED",
+        reviewStatus: "PENDING",
+        reviewedBy: null,
+        reviewNote: null,
+        reviewedAt: null,
+        updatedAt: new Date(),
+      },
+      create: {
+        studentId,
+        documentType: documentId,
+        label: documentId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        fileUrl: url,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploadStatus: "UPLOADED",
+      },
     });
-
-    const doc = existing
-      ? await prisma.document.update({
-          where: { id: existing.id },
-          data: {
-            fileUrl: url,
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type,
-            uploadStatus: "UPLOADED",
-            reviewStatus: "PENDING",
-            reviewedBy: null,
-            reviewNote: null,
-            reviewedAt: null,
-            updatedAt: new Date(),
-          },
-        })
-      : await prisma.document.create({
-          data: {
-            studentId,
-            documentType: documentId,
-            label: documentId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-            fileUrl: url,
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type,
-            uploadStatus: "UPLOADED",
-          },
-        });
 
     return NextResponse.json({ success: true, data: { url, id: doc.id } });
   } catch (error) {

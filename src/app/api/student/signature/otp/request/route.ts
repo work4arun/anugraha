@@ -99,6 +99,27 @@ export async function POST(req: NextRequest) {
     const message = `${code} is your Rathinam Anugraha 2026 signature OTP. Valid for 5 minutes. Do not share it with anyone.`;
     const sms = await sendSms(student.mobile, message);
 
+    // If the SMS was not delivered (and we're not in local-dev mode where the
+    // code is surfaced in the response), fail loudly instead of leaving the
+    // student waiting for a code that will never arrive.
+    if (!sms.delivered && !isDevSms()) {
+      // Void the OTP we just created so it can't linger.
+      await prisma.signatureOtp.updateMany({
+        where: { studentId, formTemplateId, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      console.error("[signature otp request] SMS delivery failed:", sms.provider, sms.error);
+      return NextResponse.json(
+        {
+          success: false,
+          code: "SMS_FAILED",
+          error:
+            "We couldn't send the OTP to your mobile right now. Please try again in a few minutes or contact the Admissions Office.",
+        },
+        { status: 502 }
+      );
+    }
+
     await prisma.auditLog.create({
       data: {
         studentId,
