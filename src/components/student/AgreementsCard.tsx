@@ -22,9 +22,11 @@ import { Badge } from "@/components/ui/Badge";
 
 interface InputField {
   id: string;
-  fieldType: "CHECKBOX" | "TEXT";
+  fieldType: "CHECKBOX" | "TEXT" | "DROPDOWN";
   label: string | null;
   required: boolean;
+  options: string[];
+  defaultValue: string | null;
   page: number;
 }
 
@@ -49,8 +51,27 @@ export function AgreementsCard() {
     try {
       const res = await fetch("/api/student/agreements");
       const data = await res.json();
-      if (res.ok && data.success) setAgreements(data.data);
-      else setAgreements([]);
+      if (res.ok && data.success) {
+        const items: AgreementItem[] = data.data;
+        setAgreements(items);
+        // Pre-select dropdown defaults (without clobbering anything the
+        // student already picked).
+        setValues((prev) => {
+          const next = { ...prev };
+          for (const a of items) {
+            for (const f of a.inputFields) {
+              if (
+                f.fieldType === "DROPDOWN" &&
+                f.defaultValue &&
+                next[f.id] === undefined
+              ) {
+                next[f.id] = f.defaultValue;
+              }
+            }
+          }
+          return next;
+        });
+      } else setAgreements([]);
     } catch {
       setAgreements([]);
     }
@@ -70,7 +91,15 @@ export function AgreementsCard() {
     if (missing.length > 0) {
       toast.error(
         `Please complete: ${missing
-          .map((f) => f.label || (f.fieldType === "CHECKBOX" ? "checkbox" : "text field"))
+          .map(
+            (f) =>
+              f.label ||
+              (f.fieldType === "CHECKBOX"
+                ? "checkbox"
+                : f.fieldType === "DROPDOWN"
+                ? "dropdown"
+                : "text field")
+          )
           .join(", ")}`
       );
       return;
@@ -172,6 +201,27 @@ export function AgreementsCard() {
                               {f.label || "I agree"}
                               {f.required && <span className="text-error"> *</span>}
                             </span>
+                          </label>
+                        ) : f.fieldType === "DROPDOWN" ? (
+                          <label key={f.id} className="block">
+                            <span className="text-xs font-medium text-ink-muted">
+                              {f.label || "Select an option"}
+                              {f.required && <span className="text-error"> *</span>}
+                            </span>
+                            <select
+                              value={String(values[f.id] ?? "")}
+                              onChange={(e) =>
+                                setValues((v) => ({ ...v, [f.id]: e.target.value }))
+                              }
+                              className="mt-1 w-full text-sm border border-surface-border rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-brand"
+                            >
+                              <option value="">— Select —</option>
+                              {f.options.map((o, i) => (
+                                <option key={`${o}_${i}`} value={o}>
+                                  {o}
+                                </option>
+                              ))}
+                            </select>
                           </label>
                         ) : (
                           <label key={f.id} className="block">

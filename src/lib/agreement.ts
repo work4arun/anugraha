@@ -25,6 +25,7 @@ export interface SignerImage {
  * Values for non-signature fields, keyed by AgreementSignatureField.id:
  *   CHECKBOX → boolean (true = ticked)
  *   TEXT     → string typed by the student
+ *   DROPDOWN → the selected option (validated against field.options upstream)
  *   DATE     → ignored; always stamped with the signing date
  */
 export type FieldValues = Record<string, string | boolean>;
@@ -141,7 +142,8 @@ export async function stampAgreement(
       continue;
     }
 
-    // DATE (auto signing date) and TEXT (student-typed value).
+    // DATE (auto signing date), TEXT (student-typed), DROPDOWN (selected
+    // option) — all stamp as text with the same box-fitting logic.
     let text =
       field.fieldType === "DATE"
         ? signingDate

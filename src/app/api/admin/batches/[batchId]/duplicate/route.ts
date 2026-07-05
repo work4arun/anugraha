@@ -34,6 +34,7 @@ export async function POST(
           orderBy: { order: "asc" },
           include: { formTemplate: true },
         },
+        agreements: { include: { fields: true } },
       },
     });
     if (!source) {
@@ -48,7 +49,20 @@ export async function POST(
       // No body provided — fine, we'll derive a name.
     }
 
-    const newName = overrideName ?? `Copy of ${source.name}`;
+    // Never create a second batch with an existing name: duplicate names make
+    // name-based student imports ambiguous (rows silently route to whichever
+    // same-named batch wins the lookup). Auto-suffix "(2)", "(3)", … instead.
+    const baseName = overrideName ?? `Copy of ${source.name}`;
+    const taken = new Set(
+      (
+        await prisma.batch.findMany({
+          where: { name: { startsWith: baseName } },
+          select: { name: true },
+        })
+      ).map((b) => b.name)
+    );
+    let newName = baseName;
+    for (let n = 2; taken.has(newName); n++) newName = `${baseName} (${n})`;
 
     // Deep-copy each form template so the new batch is fully independent: its
     // steps must be editable without ever modifying the original templates
@@ -93,6 +107,41 @@ export async function POST(
         formAssignments: { create: steps },
       },
     });
+
+    // Deep-copy agreements (rows + placed fields) so the new batch's
+    // agreements can be edited or deleted without touching the original's.
+    // The original PDF file itself is immutable in storage, so both copies
+    // referencing the same originalPdfUrl is safe (deleting an agreement
+    // removes only its DB row, never the stored file).
+    for (const ag of source.agreements) {
+      await prisma.agreementTemplate.create({
+        data: {
+          batchId: created.id,
+          name: ag.name,
+          originalPdfUrl: ag.originalPdfUrl,
+          pageCount: ag.pageCount,
+          isActive: ag.isActive,
+          createdById: session.user.id,
+          fields: {
+            create: ag.fields.map((f) => ({
+              signerRole: f.signerRole,
+              fieldType: f.fieldType,
+              label: f.label,
+              required: f.required,
+              options:
+                f.options === null ? undefined : (f.options as Prisma.InputJsonValue),
+              defaultValue: f.defaultValue,
+              page: f.page,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              order: f.order,
+            })),
+          },
+        },
+      });
+    }
 
     // Best-effort audit — never fail a successful duplicate on a logging hiccup.
     try {

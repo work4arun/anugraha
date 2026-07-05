@@ -18,6 +18,8 @@ interface FieldInput {
   fieldType?: string;
   label?: string;
   required?: boolean;
+  options?: unknown;
+  defaultValue?: unknown;
   page: number;
   x: number;
   y: number;
@@ -27,11 +29,30 @@ interface FieldInput {
 
 const clamp01 = (n: number) => Math.min(Math.max(Number(n) || 0, 0), 1);
 
-const FIELD_TYPES = ["SIGNATURE", "CHECKBOX", "DATE", "TEXT"] as const;
+const FIELD_TYPES = ["SIGNATURE", "CHECKBOX", "DATE", "TEXT", "DROPDOWN"] as const;
 type FieldType = (typeof FIELD_TYPES)[number];
 
 function asFieldType(v: unknown): FieldType {
   return FIELD_TYPES.includes(v as FieldType) ? (v as FieldType) : "SIGNATURE";
+}
+
+const MAX_OPTIONS = 50;
+const MAX_OPTION_LEN = 120;
+
+/** Sanitize a DROPDOWN options list: strings only, trimmed, deduped, capped. */
+function cleanOptions(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const o of v) {
+    if (typeof o !== "string") continue;
+    const s = o.trim().slice(0, MAX_OPTION_LEN);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= MAX_OPTIONS) break;
+  }
+  return out;
 }
 
 export async function PUT(
@@ -64,19 +85,31 @@ export async function PUT(
 
   const cleaned = fields
     .filter((f) => f && typeof f.signerRole === "string" && Number.isFinite(f.page))
-    .map((f, i) => ({
-      agreementTemplateId: agreement.id,
-      signerRole: f.signerRole,
-      fieldType: asFieldType(f.fieldType),
-      label: typeof f.label === "string" ? f.label.slice(0, 120) : null,
-      required: f.required !== false,
-      page: Math.max(1, Math.min(Math.round(f.page), agreement.pageCount)),
-      x: clamp01(f.x),
-      y: clamp01(f.y),
-      width: clamp01(f.width),
-      height: clamp01(f.height),
-      order: i,
-    }));
+    .map((f, i) => {
+      const fieldType = asFieldType(f.fieldType);
+      const options = fieldType === "DROPDOWN" ? cleanOptions(f.options) : [];
+      const defaultValue =
+        fieldType === "DROPDOWN" &&
+        typeof f.defaultValue === "string" &&
+        options.includes(f.defaultValue.trim())
+          ? f.defaultValue.trim()
+          : null;
+      return {
+        agreementTemplateId: agreement.id,
+        signerRole: f.signerRole,
+        fieldType,
+        label: typeof f.label === "string" ? f.label.slice(0, 120) : null,
+        required: f.required !== false,
+        options: fieldType === "DROPDOWN" ? options : undefined,
+        defaultValue,
+        page: Math.max(1, Math.min(Math.round(f.page), agreement.pageCount)),
+        x: clamp01(f.x),
+        y: clamp01(f.y),
+        width: clamp01(f.width),
+        height: clamp01(f.height),
+        order: i,
+      };
+    });
 
   // Replace the whole set atomically.
   await prisma.$transaction([

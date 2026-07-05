@@ -31,6 +31,8 @@ export async function GET() {
           fieldType: true,
           label: true,
           required: true,
+          options: true,
+          defaultValue: true,
           page: true,
         },
         orderBy: { order: "asc" },
@@ -51,15 +53,22 @@ export async function GET() {
         roles: Array.from(
           new Set(a.fields.filter((f) => f.fieldType === "SIGNATURE").map((f) => f.signerRole))
         ),
-        // CHECKBOX/TEXT need input from the student at signing time (send
-        // them back as `values` keyed by field id); DATE is auto-filled.
+        // CHECKBOX/TEXT/DROPDOWN need input from the student at signing time
+        // (send them back as `values` keyed by field id); DATE is auto-filled.
         inputFields: a.fields
-          .filter((f) => f.fieldType === "CHECKBOX" || f.fieldType === "TEXT")
+          .filter(
+            (f) =>
+              f.fieldType === "CHECKBOX" ||
+              f.fieldType === "TEXT" ||
+              f.fieldType === "DROPDOWN"
+          )
           .map((f) => ({
             id: f.id,
             fieldType: f.fieldType,
             label: f.label,
             required: f.required,
+            options: Array.isArray(f.options) ? (f.options as string[]) : [],
+            defaultValue: f.defaultValue,
             page: f.page,
           })),
         status: signed?.status ?? "PENDING",

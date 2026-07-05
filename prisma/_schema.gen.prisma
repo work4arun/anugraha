@@ -433,6 +433,7 @@ enum AgreementFieldType {
   CHECKBOX  // ticked by the student at signing time
   DATE      // auto-filled with the signing date
   TEXT      // typed by the student at signing time
+  DROPDOWN  // student picks one of the admin-configured options
 }
 
 model AgreementSignatureField {
@@ -444,10 +445,14 @@ model AgreementSignatureField {
   signerRole          String
   // What goes in the box (DocuSign-style field types).
   fieldType           AgreementFieldType @default(SIGNATURE)
-  // Prompt shown to the student for TEXT/CHECKBOX fields, e.g. "Full name".
+  // Prompt shown to the student for TEXT/CHECKBOX/DROPDOWN fields, e.g. "Full name".
   label               String?
-  // Must be completed before the agreement can be signed (TEXT/CHECKBOX).
+  // Must be completed before the agreement can be signed (TEXT/CHECKBOX/DROPDOWN).
   required            Boolean           @default(true)
+  // DROPDOWN only: the selectable options, stored as a JSON string[].
+  options             Json?
+  // DROPDOWN only: optional pre-selected option (must be one of `options`).
+  defaultValue        String?
   // 1-based page number the box sits on.
   page                Int
   // Normalized geometry (0..1) relative to the page, origin at top-left. Kept

@@ -58,12 +58,21 @@ export async function POST(req: NextRequest) {
   const batches = allBatches.filter((b) => canManageBatch(session, b));
   const byId = new Map(batches.map((b) => [b.id, b.id]));
   const byName = new Map(batches.map((b) => [b.name.trim().toLowerCase(), b.id]));
+  // Names shared by more than one batch are ambiguous — routing rows to
+  // "whichever batch won the map" silently mixed student lists. Refuse those.
+  const nameCounts = new Map<string, number>();
+  for (const b of batches) {
+    const k = b.name.trim().toLowerCase();
+    nameCounts.set(k, (nameCounts.get(k) ?? 0) + 1);
+  }
 
-  function resolveBatch(row: CsvRow): string | null {
+  function resolveBatch(row: CsvRow): string | "AMBIGUOUS" | null {
     const v = pick(row, "batch", "Batch", "batch_id", "batchId", "Batch Name");
     if (v) {
       if (byId.has(v)) return v;
-      const id = byName.get(v.toLowerCase());
+      const k = v.toLowerCase();
+      if ((nameCounts.get(k) ?? 0) > 1) return "AMBIGUOUS";
+      const id = byName.get(k);
       if (id) return id;
       return null; // named a batch we couldn't find
     }
@@ -91,6 +100,13 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedBatchId = resolveBatch(row);
+    if (resolvedBatchId === "AMBIGUOUS") {
+      skipped++;
+      errors.push(
+        `${regNo}: batch name "${pick(row, "batch", "Batch")}" matches more than one batch — use the batch id instead.`
+      );
+      continue;
+    }
     if (!resolvedBatchId) {
       skipped++;
       const named = pick(row, "batch", "Batch");
@@ -104,13 +120,26 @@ export async function POST(req: NextRequest) {
     try {
       const existing = await prisma.student.findUnique({ where: { regNo } });
 
+      // Batch independence: a student belongs to exactly ONE batch. Never
+      // silently move a student between batches during import — that is how
+      // "duplicated" batches ended up sharing (stealing) the original batch's
+      // rows. If the reg no already lives in a different batch, report a
+      // conflict so the admin resolves it deliberately.
+      if (existing && existing.batchId !== resolvedBatchId) {
+        skipped++;
+        errors.push(
+          `${regNo}: already enrolled in another batch — not moved. ` +
+            `Remove them there first (or use a different reg no) if this is intentional.`
+        );
+        continue;
+      }
+
       await prisma.student.upsert({
         where: { regNo },
         update: {
           name,
           email: email ?? undefined,
           mobile: mobile ?? undefined,
-          batchId: resolvedBatchId,
           username,
           // Only overwrite the password when the admin explicitly provided one.
           ...(providedPassword

@@ -66,6 +66,13 @@ export async function POST(
         const v = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim().slice(0, 200) : "";
         values[f.id] = v;
         if (f.required && !v) missing.push(f.label || "text field");
+      } else if (f.fieldType === "DROPDOWN") {
+        const opts = Array.isArray(f.options) ? (f.options as string[]) : [];
+        const raw = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim() : "";
+        // Only a configured option counts; anything else is treated as empty.
+        const v = opts.includes(raw) ? raw : "";
+        values[f.id] = v;
+        if (f.required && !v) missing.push(f.label || "dropdown");
       }
     }
     if (missing.length > 0) {

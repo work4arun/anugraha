@@ -13,6 +13,10 @@ import {
   CheckSquare,
   CalendarDays,
   Type,
+  List,
+  X,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
@@ -22,14 +26,16 @@ const PDF_WORKER_SRC =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 type SignerRole = "student" | "parent";
-type FieldType = "SIGNATURE" | "CHECKBOX" | "DATE" | "TEXT";
+type FieldType = "SIGNATURE" | "CHECKBOX" | "DATE" | "TEXT" | "DROPDOWN";
 
 interface Field {
   key: string;          // stable client id
   signerRole: SignerRole;
   fieldType: FieldType;
-  label: string;        // prompt for TEXT/CHECKBOX (e.g. "Full name")
+  label: string;        // prompt for TEXT/CHECKBOX/DROPDOWN (e.g. "Full name")
   required: boolean;
+  options: string[];    // DROPDOWN only
+  defaultValue: string; // DROPDOWN only ("" = no default)
   page: number;         // 1-based
   x: number;            // normalized 0..1, top-left origin
   y: number;
@@ -49,6 +55,8 @@ interface AgreementData {
     fieldType?: string;
     label?: string | null;
     required?: boolean;
+    options?: string[];
+    defaultValue?: string | null;
     page: number;
     x: number;
     y: number;
@@ -67,6 +75,7 @@ const TYPE_META: Record<FieldType, { label: string; defaultW: number; defaultH: 
   CHECKBOX:  { label: "Checkbox",  defaultW: 0.035, defaultH: 0.025, minW: 0.015, minH: 0.012 },
   DATE:      { label: "Date signed", defaultW: 0.16, defaultH: 0.035, minW: 0.06, minH: 0.02 },
   TEXT:      { label: "Text", defaultW: 0.25, defaultH: 0.04, minW: 0.06, minH: 0.02 },
+  DROPDOWN:  { label: "Dropdown", defaultW: 0.2, defaultH: 0.04, minW: 0.06, minH: 0.02 },
 };
 
 function typeIcon(t: FieldType, className: string) {
@@ -75,11 +84,14 @@ function typeIcon(t: FieldType, className: string) {
     case "CHECKBOX": return <CheckSquare className={className} />;
     case "DATE": return <CalendarDays className={className} />;
     case "TEXT": return <Type className={className} />;
+    case "DROPDOWN": return <List className={className} />;
   }
 }
 
 function asFieldType(v: unknown): FieldType {
-  return v === "CHECKBOX" || v === "DATE" || v === "TEXT" ? v : "SIGNATURE";
+  return v === "CHECKBOX" || v === "DATE" || v === "TEXT" || v === "DROPDOWN"
+    ? v
+    : "SIGNATURE";
 }
 
 let _keySeq = 0;
@@ -109,6 +121,8 @@ export function AgreementEditorClient({
       fieldType: asFieldType(f.fieldType),
       label: f.label ?? "",
       required: f.required !== false,
+      options: f.options ?? [],
+      defaultValue: f.defaultValue ?? "",
       page: f.page,
       x: f.x,
       y: f.y,
@@ -252,6 +266,8 @@ export function AgreementEditorClient({
         fieldType,
         label: "",
         required: true,
+        options: fieldType === "DROPDOWN" ? ["Option 1", "Option 2"] : [],
+        defaultValue: "",
         page,
         x: 0.35,
         y: 0.45,
@@ -272,6 +288,14 @@ export function AgreementEditorClient({
   }
 
   async function save() {
+    const emptyDropdown = fields.find(
+      (f) => f.fieldType === "DROPDOWN" && f.options.filter((o) => o.trim()).length === 0
+    );
+    if (emptyDropdown) {
+      setSelectedKey(emptyDropdown.key);
+      toast.error("Every dropdown needs at least one option");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/agreements/${agreement.id}/fields`, {
@@ -283,6 +307,9 @@ export function AgreementEditorClient({
             fieldType: f.fieldType,
             label: f.label || undefined,
             required: f.required,
+            options: f.fieldType === "DROPDOWN" ? f.options : undefined,
+            defaultValue:
+              f.fieldType === "DROPDOWN" && f.defaultValue ? f.defaultValue : undefined,
             page: f.page,
             x: f.x,
             y: f.y,
@@ -378,37 +405,160 @@ export function AgreementEditorClient({
               >
                 Text
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<List className="w-4 h-4" />}
+                onClick={() => addField("student", "DROPDOWN")}
+              >
+                Dropdown
+              </Button>
               <span className="text-xs text-ink-muted ml-auto">
                 Drag to move; drag the corner to resize. Date fields auto-fill on signing.
               </span>
             </div>
 
-            {/* Properties for the selected TEXT/CHECKBOX field */}
+            {/* Properties for the selected TEXT/CHECKBOX/DROPDOWN field */}
             {(() => {
               const sel = fields.find((f) => f.key === selectedKey);
-              if (!sel || (sel.fieldType !== "TEXT" && sel.fieldType !== "CHECKBOX")) return null;
+              if (
+                !sel ||
+                (sel.fieldType !== "TEXT" &&
+                  sel.fieldType !== "CHECKBOX" &&
+                  sel.fieldType !== "DROPDOWN")
+              )
+                return null;
               return (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-surface-border bg-white px-3 py-2">
-                  <span className="text-xs font-medium text-ink flex items-center gap-1">
-                    {typeIcon(sel.fieldType, "w-3.5 h-3.5")}
-                    {TYPE_META[sel.fieldType].label} field
-                  </span>
-                  <input
-                    type="text"
-                    value={sel.label}
-                    onChange={(e) => updateField(sel.key, { label: e.target.value })}
-                    placeholder={sel.fieldType === "TEXT" ? "Label, e.g. Full name" : "Label, e.g. I agree to the terms"}
-                    className="flex-1 min-w-[200px] text-sm border border-surface-border rounded-lg px-2 py-1.5"
-                    maxLength={120}
-                  />
-                  <label className="flex items-center gap-1.5 text-xs text-ink-muted select-none">
+                <div className="rounded-xl border border-surface-border bg-white px-3 py-2 space-y-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-medium text-ink flex items-center gap-1">
+                      {typeIcon(sel.fieldType, "w-3.5 h-3.5")}
+                      {TYPE_META[sel.fieldType].label} field
+                    </span>
                     <input
-                      type="checkbox"
-                      checked={sel.required}
-                      onChange={(e) => updateField(sel.key, { required: e.target.checked })}
+                      type="text"
+                      value={sel.label}
+                      onChange={(e) => updateField(sel.key, { label: e.target.value })}
+                      placeholder={
+                        sel.fieldType === "TEXT"
+                          ? "Label, e.g. Full name"
+                          : sel.fieldType === "DROPDOWN"
+                          ? "Label, e.g. Blood group"
+                          : "Label, e.g. I agree to the terms"
+                      }
+                      className="flex-1 min-w-[200px] text-sm border border-surface-border rounded-lg px-2 py-1.5"
+                      maxLength={120}
                     />
-                    Required
-                  </label>
+                    <label className="flex items-center gap-1.5 text-xs text-ink-muted select-none">
+                      <input
+                        type="checkbox"
+                        checked={sel.required}
+                        onChange={(e) => updateField(sel.key, { required: e.target.checked })}
+                      />
+                      Required
+                    </label>
+                  </div>
+
+                  {sel.fieldType === "DROPDOWN" && (
+                    <div className="border-t border-surface-border pt-2 space-y-1.5">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                        Options
+                      </p>
+                      {sel.options.map((opt, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={opt}
+                            onChange={(e) => {
+                              const options = [...sel.options];
+                              options[i] = e.target.value;
+                              updateField(sel.key, { options });
+                            }}
+                            placeholder={`Option ${i + 1}`}
+                            className="flex-1 text-sm border border-surface-border rounded-lg px-2 py-1"
+                            maxLength={120}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (i === 0) return;
+                              const options = [...sel.options];
+                              [options[i - 1], options[i]] = [options[i], options[i - 1]];
+                              updateField(sel.key, { options });
+                            }}
+                            disabled={i === 0}
+                            className="w-7 h-7 rounded-lg border border-surface-border flex items-center justify-center disabled:opacity-30"
+                            aria-label="Move option up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (i === sel.options.length - 1) return;
+                              const options = [...sel.options];
+                              [options[i], options[i + 1]] = [options[i + 1], options[i]];
+                              updateField(sel.key, { options });
+                            }}
+                            disabled={i === sel.options.length - 1}
+                            className="w-7 h-7 rounded-lg border border-surface-border flex items-center justify-center disabled:opacity-30"
+                            aria-label="Move option down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const removed = sel.options[i];
+                              const options = sel.options.filter((_, j) => j !== i);
+                              updateField(sel.key, {
+                                options,
+                                // Clear the default if its option was removed.
+                                defaultValue:
+                                  sel.defaultValue === removed ? "" : sel.defaultValue,
+                              });
+                            }}
+                            className="w-7 h-7 rounded-lg border border-surface-border flex items-center justify-center text-error"
+                            aria-label="Remove option"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap items-center gap-3 pt-1">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          icon={<Plus className="w-3.5 h-3.5" />}
+                          onClick={() =>
+                            updateField(sel.key, { options: [...sel.options, ""] })
+                          }
+                          disabled={sel.options.length >= 50}
+                        >
+                          Add option
+                        </Button>
+                        <label className="flex items-center gap-2 text-xs text-ink-muted">
+                          Default:
+                          <select
+                            value={sel.defaultValue}
+                            onChange={(e) =>
+                              updateField(sel.key, { defaultValue: e.target.value })
+                            }
+                            className="text-sm border border-surface-border rounded-lg px-2 py-1 bg-white"
+                          >
+                            <option value="">No default</option>
+                            {sel.options
+                              .filter((o) => o.trim())
+                              .map((o, i) => (
+                                <option key={`${o}_${i}`} value={o}>
+                                  {o}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}

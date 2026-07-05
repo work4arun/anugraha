@@ -39,6 +39,8 @@ export default async function AgreementEditorPage({
           fieldType: f.fieldType,
           label: f.label,
           required: f.required,
+          options: Array.isArray(f.options) ? (f.options as string[]) : [],
+          defaultValue: f.defaultValue,
           page: f.page,
           x: f.x,
           y: f.y,
