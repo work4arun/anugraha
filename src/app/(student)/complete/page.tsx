@@ -10,6 +10,7 @@ import {
   Sparkles,
   RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
 import {
@@ -20,7 +21,7 @@ import {
 
 export default function CompletePage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState("Congratulations");
+  const [studentName, setStudentName] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   const mountedRef = useRef(true);
@@ -30,24 +31,37 @@ export default function CompletePage() {
     };
   }, []);
 
-  function checkForPdf() {
+  function checkForPdf({ silent = false }: { silent?: boolean } = {}) {
     setChecking(true);
     return fetch("/api/student/profile")
-      .then((r) => r.json())
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok || !d?.success) {
+          throw new Error(d?.error || "Couldn't check your PDF status");
+        }
+        return d;
+      })
       .then((d) => {
         if (!mountedRef.current) return;
         if (d.data?.pdfUrl) setPdfUrl(d.data.pdfUrl);
         if (d.data?.name) setStudentName(d.data.name.split(" ")[0]);
       })
-      .catch(() => null)
+      .catch((err) => {
+        if (!mountedRef.current || silent) return;
+        toast.error(
+          err instanceof Error ? err.message : "Couldn't check your PDF status"
+        );
+      })
       .finally(() => {
         if (mountedRef.current) setChecking(false);
       });
   }
 
   useEffect(() => {
-    // Fetch the current student's PDF URL from their profile
-    checkForPdf();
+    // Fetch the current student's PDF URL from their profile. Silent on
+    // mount — an error here shouldn't greet the student with a toast;
+    // it'll surface if they hit Refresh and it still fails.
+    checkForPdf({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -106,7 +120,7 @@ export default function CompletePage() {
             <Sparkles className="w-5 h-5 text-accent" />
           </div>
           <h1 className="text-3xl font-bold text-ink mb-2">
-            You did it, {studentName}!
+            {studentName ? `You did it, ${studentName}!` : "You did it!"}
           </h1>
           <p className="text-base text-ink-muted leading-relaxed">
             Your Anugraha 2026 induction is complete. Download your PDF, print it,
@@ -149,7 +163,7 @@ export default function CompletePage() {
                 fullWidth
                 variant="outline"
                 icon={<RefreshCw className="w-4 h-4" />}
-                onClick={checkForPdf}
+                onClick={() => checkForPdf()}
                 loading={checking}
               >
                 Refresh
