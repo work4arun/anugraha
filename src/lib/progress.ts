@@ -80,5 +80,13 @@ export async function recalculateBatchStudentsProgress(batchId: string): Promise
     where: { batchId },
     select: { id: true },
   });
-  await Promise.all(students.map((s) => recalculateStudentProgress(s.id)));
+
+  // Chunk instead of firing one unbounded Promise.all — a large batch (a few
+  // hundred students) would otherwise open hundreds of concurrent queries at
+  // once against the DB pool from a single request.
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < students.length; i += CHUNK_SIZE) {
+    const chunk = students.slice(i, i + CHUNK_SIZE);
+    await Promise.all(chunk.map((s) => recalculateStudentProgress(s.id)));
+  }
 }
