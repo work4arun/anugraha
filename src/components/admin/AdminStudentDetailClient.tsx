@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, FileDown, Eye, Flag, ThumbsUp, KeyRound, Download, FileText, RotateCcw, Undo2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
@@ -24,6 +24,7 @@ interface AgreementSummary {
 
 interface Props {
   profile: StudentProfile;
+  canManage?: boolean;
   pdfUrl?: string | null;
   pdfGeneratedAt?: string | null;
   documents: Array<{
@@ -37,7 +38,7 @@ interface Props {
   agreements?: AgreementSummary[];
 }
 
-export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, documents, agreements = [] }: Props) {
+export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, pdfGeneratedAt, documents, agreements = [] }: Props) {
   const router = useRouter();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
@@ -57,6 +58,10 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
   // Reset-agreement confirmation state
   const [resetAgreementTarget, setResetAgreementTarget] = useState<AgreementSummary | null>(null);
   const [resetAgreementBusy, setResetAgreementBusy] = useState(false);
+
+  // Delete-student confirmation state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const submittedStepCount = profile.steps.filter((s) => s.status === "completed").length;
 
@@ -195,6 +200,20 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
     if (currentPdfUrl) window.open(currentPdfUrl, "_blank");
   }
 
+  async function confirmDeleteStudent() {
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Student deleted");
+      router.push(`/admin/batches/${profile.batch.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete student");
+      setDeleteBusy(false);
+    }
+  }
+
   return (
     <div className="min-h-[100dvh] bg-surface-muted">
       <header className="bg-white border-b border-surface-border sticky top-0 z-40">
@@ -251,6 +270,16 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
           >
             {currentPdfUrl ? "Regenerate PDF" : "Generate PDF"}
           </Button>
+          {canManage && (
+            <button
+              onClick={() => setDeleteOpen(true)}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-ink-muted hover:text-error hover:bg-error-light transition-colors shrink-0"
+              aria-label="Delete student"
+              title="Delete student"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -577,6 +606,44 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
                 icon={<RotateCcw className="w-4 h-4" />}
               >
                 Reset agreement
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete student modal */}
+      {deleteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !deleteBusy && setDeleteOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Delete student</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This permanently removes <span className="font-medium text-ink">{profile.name}</span>{" "}
+              ({profile.regNo}) along with their form responses, signatures, uploaded documents and
+              signed agreements. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={deleteBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDeleteStudent}
+                loading={deleteBusy}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete student
               </Button>
             </div>
           </div>

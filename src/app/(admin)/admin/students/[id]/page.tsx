@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect, notFound } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { canManageBatch } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { getStudentProfile } from "@/lib/student";
 import { AdminStudentDetailClient } from "@/components/admin/AdminStudentDetailClient";
@@ -21,8 +22,14 @@ export default async function AdminStudentDetailPage({
 
   const student = await prisma.student.findUnique({
     where: { id: params.id },
-    select: { pdfUrl: true, pdfGeneratedAt: true },
+    select: {
+      pdfUrl: true,
+      pdfGeneratedAt: true,
+      batch: { select: { createdById: true } },
+    },
   });
+
+  const canManage = student ? canManageBatch(session, student.batch) : false;
 
   const docs = await prisma.document.findMany({
     where: { studentId: params.id },
@@ -37,6 +44,7 @@ export default async function AdminStudentDetailPage({
   return (
     <AdminStudentDetailClient
       profile={profile}
+      canManage={canManage}
       pdfUrl={student?.pdfUrl ?? null}
       pdfGeneratedAt={student?.pdfGeneratedAt?.toISOString() ?? null}
       documents={docs.map((d) => ({

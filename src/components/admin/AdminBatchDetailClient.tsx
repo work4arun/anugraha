@@ -106,6 +106,8 @@ export function AdminBatchDetailClient({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [studentDeleteTarget, setStudentDeleteTarget] = useState<Student | null>(null);
+  const [studentDeleteBusy, setStudentDeleteBusy] = useState(false);
 
   const [batchName, setBatchName] = useState(batch.name);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -370,6 +372,25 @@ export function AdminBatchDetailClient({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not delete batch");
       setDeleting(false);
+    }
+  }
+
+  async function confirmDeleteStudent() {
+    if (!studentDeleteTarget) return;
+    setStudentDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${studentDeleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Student deleted");
+      setStudentDeleteTarget(null);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete student");
+    } finally {
+      setStudentDeleteBusy(false);
     }
   }
 
@@ -874,6 +895,16 @@ export function AdminBatchDetailClient({
                         <FileDown className="w-4 h-4" />
                       </a>
                     )}
+                    {canManage && (
+                      <button
+                        onClick={() => setStudentDeleteTarget(student)}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light transition-colors"
+                        aria-label="Delete student"
+                        title="Delete student"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -999,6 +1030,45 @@ export function AdminBatchDetailClient({
                 icon={<Trash2 className="w-4 h-4" />}
               >
                 Delete batch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete student modal */}
+      {studentDeleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !studentDeleteBusy && setStudentDeleteTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Delete student</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This permanently removes{" "}
+              <span className="font-medium text-ink">{studentDeleteTarget.name}</span> (
+              {studentDeleteTarget.regNo}) along with their form responses, signatures,
+              uploaded documents and signed agreements. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setStudentDeleteTarget(null)} disabled={studentDeleteBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDeleteStudent}
+                loading={studentDeleteBusy}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete student
               </Button>
             </div>
           </div>
