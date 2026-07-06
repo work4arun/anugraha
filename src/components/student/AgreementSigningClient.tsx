@@ -12,7 +12,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, GraduationCap, FileSignature, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +61,34 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
       [current.id]: { ...prev[current.id], [fieldId]: v },
     }));
   }
+
+  // Seed admin-configured DROPDOWN defaults once per agreement. Without this
+  // a required dropdown with a pre-selected option (set up in the agreement
+  // editor) still starts blank here, forcing the student to manually reselect
+  // it and quietly adding to what's blocking the Sign button.
+  useEffect(() => {
+    setValuesByAgreement((prev) => {
+      if (prev[current.id]) return prev;
+      const seeded: Record<string, string | boolean> = {};
+      for (const f of current.inputFields) {
+        if (f.fieldType === "DROPDOWN" && f.defaultValue && f.options.includes(f.defaultValue)) {
+          seeded[f.id] = f.defaultValue;
+        }
+      }
+      if (Object.keys(seeded).length === 0) return prev;
+      return { ...prev, [current.id]: seeded };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current.id]);
+
+  // Stable per-agreement callback — recreated only when the agreement itself
+  // changes, not on every keystroke. AgreementInlinePreview's effect that
+  // fetches and renders the PDF depends on this function's identity; an
+  // inline arrow here would make it re-run (and re-fetch/re-render the whole
+  // PDF from scratch) on every unrelated state change in this component.
+  const handleReadThrough = useCallback(() => {
+    setReadIds((r) => (r[current.id] ? r : { ...r, [current.id]: true }));
+  }, [current.id]);
   function setSignature(role: string, dataUrl: string) {
     setSignaturesByAgreement((prev) => ({
       ...prev,
@@ -195,9 +223,7 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
             <AgreementInlinePreview
               url={current.originalPdfUrl}
               maxHeight={480}
-              onReadThrough={() =>
-                setReadIds((r) => (r[current.id] ? r : { ...r, [current.id]: true }))
-              }
+              onReadThrough={handleReadThrough}
             />
             {!hasRead && (
               <p className="mt-1.5 text-center text-[11px] text-ink-muted">
