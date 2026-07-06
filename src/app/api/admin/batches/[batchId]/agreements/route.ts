@@ -12,6 +12,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadFile } from "@/lib/storage";
 import { canManageBatch } from "@/lib/authz";
+import { recalculateBatchStudentsProgress } from "@/lib/progress";
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -118,6 +119,26 @@ export async function POST(
         createdById: session.user.id,
       },
     });
+
+    // A brand-new agreement is one more (unsigned) step for every existing
+    // student in this batch. Recompute each student's status so anyone
+    // previously "COMPLETED" drops back to reflect the new pending step, and
+    // clear any stale "final" PDF that was generated before this agreement
+    // existed (it would be missing this signature and shouldn't be handed
+    // out as final anymore).
+    const staleIds = (
+      await prisma.student.findMany({
+        where: { batchId, pdfUrl: { not: null } },
+        select: { id: true },
+      })
+    ).map((s) => s.id);
+    if (staleIds.length > 0) {
+      await prisma.student.updateMany({
+        where: { id: { in: staleIds } },
+        data: { pdfUrl: null, pdfGeneratedAt: null },
+      });
+    }
+    await recalculateBatchStudentsProgress(batchId);
 
     await prisma.auditLog.create({
       data: {

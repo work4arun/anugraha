@@ -14,6 +14,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stampAgreement, collectStudentSignatures } from "@/lib/agreement";
 import { generateStudentPdf } from "@/lib/pdf";
+import { recalculateStudentProgress } from "@/lib/progress";
 
 export async function POST(
   req: NextRequest,
@@ -135,6 +136,11 @@ export async function POST(
         metadata: { agreementTemplateId: agreement.id, stamped, status: record.status },
       },
     });
+
+    // Agreements are the last step of induction — recompute status now that
+    // this one changed (flips to COMPLETED once every step + agreement is
+    // signed; see src/lib/progress.ts).
+    await recalculateStudentProgress(studentId);
 
     // If the student's consolidated PDF was already generated, it's now stale
     // (it won't contain this newly signed agreement). Regenerate it in the

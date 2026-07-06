@@ -18,6 +18,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getIpAddress } from "@/lib/utils";
+import { recalculateStudentProgress } from "@/lib/progress";
 
 export async function POST(
   req: NextRequest,
@@ -66,9 +67,15 @@ export async function POST(
       prisma.deliverableRowAcknowledgment.deleteMany({
         where: { studentId: params.id, formTemplateId },
       }),
+      // The previously generated "final" PDF (if any) now reflects stale
+      // data for this form — clear it so it isn't handed out as final until
+      // regenerated from the corrected submission.
+      ...(student.pdfUrl
+        ? [prisma.student.update({ where: { id: params.id }, data: { pdfUrl: null, pdfGeneratedAt: null } })]
+        : []),
     ]);
 
-    await recalculateProgress(params.id);
+    await recalculateStudentProgress(params.id);
 
     await prisma.auditLog.create({
       data: {
@@ -88,38 +95,4 @@ export async function POST(
     console.error("[student form reset]", error);
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
-}
-
-/** Recompute completion % and overall status from required, submitted forms. */
-async function recalculateProgress(studentId: string) {
-  const student = await prisma.student.findUnique({
-    where: { id: studentId },
-    include: {
-      batch: { include: { formAssignments: { where: { required: true } } } },
-      formResponses: { select: { formTemplateId: true, status: true } },
-    },
-  });
-  if (!student) return;
-
-  const requiredTemplateIds = new Set(
-    student.batch.formAssignments.map((a) => a.formTemplateId)
-  );
-  const submittedIds = new Set(
-    student.formResponses
-      .filter((r) => r.status === "SUBMITTED" && requiredTemplateIds.has(r.formTemplateId))
-      .map((r) => r.formTemplateId)
-  );
-
-  const pct =
-    requiredTemplateIds.size > 0
-      ? Math.round((submittedIds.size / requiredTemplateIds.size) * 100)
-      : 100;
-
-  const newStatus =
-    pct === 100 ? "COMPLETED" : submittedIds.size > 0 ? "IN_PROGRESS" : "NOT_STARTED";
-
-  await prisma.student.update({
-    where: { id: studentId },
-    data: { completionPct: pct, status: newStatus },
-  });
 }

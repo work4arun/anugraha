@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getIpAddress } from "@/lib/utils";
+import { recalculateStudentProgress } from "@/lib/progress";
 
 // POST /api/student/form-response — upsert a student's form response
 export async function POST(req: NextRequest) {
@@ -85,8 +86,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Update student status + completion %
-    await updateStudentProgress(studentId);
+    // Update student status + completion % (factors in agreements too —
+    // see src/lib/progress.ts)
+    await recalculateStudentProgress(studentId);
 
     // Audit log
     if (status === "SUBMITTED") {
@@ -136,51 +138,4 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({ success: true, data: response });
-}
-
-// ── Helper ──────────────────────────────────────────────────────────────────
-
-async function updateStudentProgress(studentId: string) {
-  const student = await prisma.student.findUnique({
-    where: { id: studentId },
-    include: {
-      batch: {
-        include: {
-          formAssignments: { where: { required: true } },
-        },
-      },
-      formResponses: { select: { formTemplateId: true, status: true } },
-    },
-  });
-
-  if (!student) return;
-
-  const requiredTemplateIds = new Set(
-    student.batch.formAssignments.map((a) => a.formTemplateId)
-  );
-  const submittedIds = new Set(
-    student.formResponses
-      .filter((r) => r.status === "SUBMITTED" && requiredTemplateIds.has(r.formTemplateId))
-      .map((r) => r.formTemplateId)
-  );
-
-  const pct =
-    requiredTemplateIds.size > 0
-      ? Math.round((submittedIds.size / requiredTemplateIds.size) * 100)
-      : 100;
-
-  const newStatus =
-    pct === 100
-      ? "COMPLETED"
-      : submittedIds.size > 0
-      ? "IN_PROGRESS"
-      : "NOT_STARTED";
-
-  await prisma.student.update({
-    where: { id: studentId },
-    data: {
-      completionPct: pct,
-      status: newStatus,
-    },
-  });
 }

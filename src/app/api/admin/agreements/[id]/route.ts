@@ -15,6 +15,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadFile } from "@/lib/storage";
 import { canManageBatch } from "@/lib/authz";
+import { recalculateBatchStudentsProgress } from "@/lib/progress";
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -170,6 +171,13 @@ export async function PATCH(
       data,
     });
 
+    // Deactivating this agreement removes it from what's "pending" for every
+    // student in the batch — recompute so anyone who was stuck waiting on
+    // just this one flips back to COMPLETED.
+    if (data.isActive === false) {
+      await recalculateBatchStudentsProgress(agreement.batchId);
+    }
+
     await prisma.auditLog.create({
       data: {
         actorType: "admin",
@@ -228,6 +236,10 @@ export async function DELETE(
   }
 
   await prisma.agreementTemplate.delete({ where: { id: params.id } });
+
+  // Removing this agreement entirely can unblock any student who was only
+  // waiting on it — recompute the whole batch.
+  await recalculateBatchStudentsProgress(agreement.batchId);
 
   return NextResponse.json({ success: true });
 }

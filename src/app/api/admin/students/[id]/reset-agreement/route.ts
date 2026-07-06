@@ -17,6 +17,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getIpAddress } from "@/lib/utils";
+import { recalculateStudentProgress } from "@/lib/progress";
 
 export async function POST(
   req: NextRequest,
@@ -55,6 +56,18 @@ export async function POST(
       where: { studentId_agreementTemplateId: { studentId: params.id, agreementTemplateId } },
       data: { status: "PENDING", signedPdfUrl: null, signedAt: null },
     });
+
+    // This agreement is pending again — the student can no longer be
+    // considered COMPLETED, even if their status said so a moment ago. The
+    // previously generated "final" PDF (if any) included the now-cleared
+    // signed copy, so it's stale — clear it until regenerated.
+    await recalculateStudentProgress(params.id);
+    if (student.pdfUrl) {
+      await prisma.student.update({
+        where: { id: params.id },
+        data: { pdfUrl: null, pdfGeneratedAt: null },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
