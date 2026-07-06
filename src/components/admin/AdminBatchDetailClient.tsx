@@ -107,6 +107,42 @@ export function AdminBatchDetailClient({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  const [batchName, setBatchName] = useState(batch.name);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  function openRename() {
+    setRenameValue(batchName);
+    setRenameOpen(true);
+  }
+
+  async function confirmRename() {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      toast.error("Batch name can't be empty");
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      const res = await fetch(`/api/admin/batches/${batch.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setBatchName(trimmed);
+      toast.success("Batch renamed");
+      setRenameOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not rename batch");
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -213,7 +249,7 @@ export function AdminBatchDetailClient({
       const res = await fetch(`/api/admin/templates/${a?.formTemplate.id}/clone`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignmentId, name: `${name} — ${batch.name}` }),
+        body: JSON.stringify({ assignmentId, name: `${name} — ${batchName}` }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -288,7 +324,7 @@ export function AdminBatchDetailClient({
   }
 
   function openDuplicate() {
-    setDupName(`Copy of ${batch.name}`);
+    setDupName(`Copy of ${batchName}`);
     setDupOpen(true);
   }
 
@@ -320,7 +356,7 @@ export function AdminBatchDetailClient({
   }
 
   async function confirmDelete() {
-    if (deleteConfirmText.trim() !== batch.name) {
+    if (deleteConfirmText.trim() !== batchName) {
       toast.error("Type the batch name exactly as shown to confirm");
       return;
     }
@@ -414,9 +450,21 @@ export function AdminBatchDetailClient({
           >
             <ArrowLeft className="w-5 h-5 text-ink" />
           </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-semibold text-ink truncate">{batch.name}</p>
-            <p className="text-xs text-ink-muted">{batch.institution.fullName}</p>
+          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+            <div className="min-w-0">
+              <p className="text-base font-semibold text-ink truncate">{batchName}</p>
+              <p className="text-xs text-ink-muted">{batch.institution.fullName}</p>
+            </div>
+            {canManage && (
+              <button
+                onClick={openRename}
+                aria-label="Rename batch"
+                title="Rename batch"
+                className="flex items-center justify-center w-8 h-8 rounded-lg text-ink-muted hover:text-brand hover:bg-brand-50 shrink-0"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <Button
             size="sm"
@@ -867,6 +915,40 @@ export function AdminBatchDetailClient({
         </div>
       )}
 
+      {/* Rename batch modal */}
+      {renameOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !renameBusy && setRenameOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Rename batch</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              This only changes the batch name shown in the admin dashboard — students, forms and
+              settings are unaffected.
+            </p>
+            <Input
+              id="rename-batch-name"
+              label="Batch name"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setRenameOpen(false)} disabled={renameBusy}>
+                Cancel
+              </Button>
+              <Button onClick={confirmRename} loading={renameBusy} icon={<Pencil className="w-4 h-4" />}>
+                Save name
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete batch modal */}
       {deleteOpen && (
         <div
@@ -879,7 +961,7 @@ export function AdminBatchDetailClient({
           >
             <h3 className="text-base font-semibold text-ink mb-1">Delete batch</h3>
             <p className="text-sm text-ink-muted mb-4">
-              This permanently deletes <span className="font-medium text-ink">{batch.name}</span> and
+              This permanently deletes <span className="font-medium text-ink">{batchName}</span> and
               its form assignments. This cannot be undone.
             </p>
 
@@ -892,7 +974,7 @@ export function AdminBatchDetailClient({
               <>
                 <p className="text-sm text-ink-muted mb-3">
                   To confirm, type the batch name exactly (case-sensitive):{" "}
-                  <span className="font-semibold text-ink">{batch.name}</span>
+                  <span className="font-semibold text-ink">{batchName}</span>
                 </p>
                 <Input
                   id="delete-confirm-name"
@@ -913,7 +995,7 @@ export function AdminBatchDetailClient({
                 variant="danger"
                 onClick={confirmDelete}
                 loading={deleting}
-                disabled={total > 0 || deleteConfirmText.trim() !== batch.name}
+                disabled={total > 0 || deleteConfirmText.trim() !== batchName}
                 icon={<Trash2 className="w-4 h-4" />}
               >
                 Delete batch
