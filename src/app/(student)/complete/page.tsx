@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -23,21 +23,32 @@ export default function CompletePage() {
   const [studentName, setStudentName] = useState("Congratulations");
   const [checking, setChecking] = useState(false);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   function checkForPdf() {
     setChecking(true);
     return fetch("/api/student/profile")
       .then((r) => r.json())
       .then((d) => {
+        if (!mountedRef.current) return;
         if (d.data?.pdfUrl) setPdfUrl(d.data.pdfUrl);
         if (d.data?.name) setStudentName(d.data.name.split(" ")[0]);
       })
       .catch(() => null)
-      .finally(() => setChecking(false));
+      .finally(() => {
+        if (mountedRef.current) setChecking(false);
+      });
   }
 
   useEffect(() => {
     // Fetch the current student's PDF URL from their profile
     checkForPdf();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -137,7 +148,7 @@ export default function CompletePage() {
                 size="md"
                 fullWidth
                 variant="outline"
-                icon={<RefreshCw className={`w-4 h-4 ${checking ? "animate-spin" : ""}`} />}
+                icon={<RefreshCw className="w-4 h-4" />}
                 onClick={checkForPdf}
                 loading={checking}
               >
