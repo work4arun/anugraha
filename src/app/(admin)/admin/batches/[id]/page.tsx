@@ -68,6 +68,7 @@ export default async function AdminBatchDetailPage({
         id: batch.id,
         name: batch.name,
         course: batch.course,
+        department: batch.department,
         academicYear: batch.academicYear,
         isActive: batch.isActive,
         isTemplate: batch.isTemplate,

@@ -50,6 +50,7 @@ interface BatchData {
   id: string;
   name: string;
   course: string;
+  department?: string | null;
   academicYear: string;
   isActive: boolean;
   isTemplate: boolean;
@@ -110,38 +111,66 @@ export function AdminBatchDetailClient({
   const [studentDeleteBusy, setStudentDeleteBusy] = useState(false);
 
   const [batchName, setBatchName] = useState(batch.name);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
-  const [renameBusy, setRenameBusy] = useState(false);
+  const [batchCourse, setBatchCourse] = useState(batch.course);
+  const [batchDepartment, setBatchDepartment] = useState(batch.department ?? "");
+  const [batchAcademicYear, setBatchAcademicYear] = useState(batch.academicYear);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editCourse, setEditCourse] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
+  const [editAcademicYear, setEditAcademicYear] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   function openRename() {
-    setRenameValue(batchName);
-    setRenameOpen(true);
+    setEditName(batchName);
+    setEditCourse(batchCourse);
+    setEditDepartment(batchDepartment);
+    setEditAcademicYear(batchAcademicYear);
+    setEditOpen(true);
   }
 
-  async function confirmRename() {
-    const trimmed = renameValue.trim();
-    if (!trimmed) {
+  async function confirmEditDetails() {
+    const trimmedName = editName.trim();
+    const trimmedCourse = editCourse.trim();
+    const trimmedYear = editAcademicYear.trim();
+    if (!trimmedName) {
       toast.error("Batch name can't be empty");
       return;
     }
-    setRenameBusy(true);
+    if (!trimmedCourse) {
+      toast.error("Course can't be empty");
+      return;
+    }
+    if (!trimmedYear) {
+      toast.error("Academic year can't be empty");
+      return;
+    }
+    setEditBusy(true);
     try {
       const res = await fetch(`/api/admin/batches/${batch.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({
+          name: trimmedName,
+          course: trimmedCourse,
+          department: editDepartment.trim() || null,
+          academicYear: trimmedYear,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setBatchName(trimmed);
-      toast.success("Batch renamed");
-      setRenameOpen(false);
+      setBatchName(trimmedName);
+      setBatchCourse(trimmedCourse);
+      setBatchDepartment(editDepartment.trim());
+      setBatchAcademicYear(trimmedYear);
+      toast.success("Batch details updated");
+      setEditOpen(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not rename batch");
+      toast.error(err instanceof Error ? err.message : "Could not update batch details");
     } finally {
-      setRenameBusy(false);
+      setEditBusy(false);
     }
   }
 
@@ -474,13 +503,16 @@ export function AdminBatchDetailClient({
           <div className="flex-1 min-w-0 flex items-center gap-1.5">
             <div className="min-w-0">
               <p className="text-base font-semibold text-ink truncate">{batchName}</p>
-              <p className="text-xs text-ink-muted">{batch.institution.fullName}</p>
+              <p className="text-xs text-ink-muted truncate">
+                {batch.institution.fullName} · {batchCourse}
+                {batchDepartment ? ` · ${batchDepartment}` : ""} · {batchAcademicYear}
+              </p>
             </div>
             {canManage && (
               <button
                 onClick={openRename}
-                aria-label="Rename batch"
-                title="Rename batch"
+                aria-label="Edit batch details"
+                title="Edit batch details (name, course, department, academic year)"
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-ink-muted hover:text-brand hover:bg-brand-50 shrink-0"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -946,34 +978,59 @@ export function AdminBatchDetailClient({
         </div>
       )}
 
-      {/* Rename batch modal */}
-      {renameOpen && (
+      {/* Edit batch details modal */}
+      {editOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-          onClick={() => !renameBusy && setRenameOpen(false)}
+          onClick={() => !editBusy && setEditOpen(false)}
         >
           <div
             className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold text-ink mb-1">Rename batch</h3>
+            <h3 className="text-base font-semibold text-ink mb-1">Edit batch details</h3>
             <p className="text-sm text-ink-muted mb-4">
-              This only changes the batch name shown in the admin dashboard — students, forms and
-              settings are unaffected.
+              Useful right after duplicating a batch — update the name, course, department and
+              academic year to match the new intake. Students and form steps are unaffected.
             </p>
-            <Input
-              id="rename-batch-name"
-              label="Batch name"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              autoFocus
-            />
+            <div className="flex flex-col gap-3">
+              <Input
+                id="edit-batch-name"
+                label="Batch name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                autoFocus
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  id="edit-batch-course"
+                  label="Course"
+                  value={editCourse}
+                  onChange={(e) => setEditCourse(e.target.value)}
+                  placeholder="e.g. B.E. / B.Tech"
+                />
+                <Input
+                  id="edit-batch-year"
+                  label="Academic year"
+                  value={editAcademicYear}
+                  onChange={(e) => setEditAcademicYear(e.target.value)}
+                  placeholder="e.g. 2026-27"
+                />
+              </div>
+              <Input
+                id="edit-batch-dept"
+                label="Department (optional)"
+                value={editDepartment}
+                onChange={(e) => setEditDepartment(e.target.value)}
+                placeholder="e.g. Computer Science"
+              />
+            </div>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="ghost" onClick={() => setRenameOpen(false)} disabled={renameBusy}>
+              <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={editBusy}>
                 Cancel
               </Button>
-              <Button onClick={confirmRename} loading={renameBusy} icon={<Pencil className="w-4 h-4" />}>
-                Save name
+              <Button onClick={confirmEditDetails} loading={editBusy} icon={<Pencil className="w-4 h-4" />}>
+                Save changes
               </Button>
             </div>
           </div>
