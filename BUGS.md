@@ -1,5 +1,40 @@
 # Bug scan — pre-launch review (1000s of students)
 
+> **Update (2026-07-06 fix pass):** All remaining code-level issues are FIXED:
+> - **7 (bulk import):** now parses/validates rows up front, fetches existing
+>   students in ONE query, bcrypt-hashes in parallel (8-way), and upserts in
+>   parallel batches (10-way) with per-row error capture. Duplicate reg nos in
+>   one file keep the last row; `maxDuration = 300` exported.
+> - **9 (rate limiting):** new `src/lib/rateLimit.ts` (in-memory fixed-window).
+>   Both login providers now throttle: 5 attempts/account + 30/IP per 15 min
+>   (counter cleared on successful login). ⚠️ In-memory — swap for Redis if the
+>   app is ever run on more than one instance.
+> - **10 (admin scoping):** `students/[id]/password`, `reset-form`,
+>   `reset-agreement`, `reset-all`, `reset-all-agreements`, and
+>   `documents/[id]/review` now all enforce `canManageBatch` (403 otherwise).
+>   The review route also validates `status` against APPROVED/FLAGGED (was an
+>   unvalidated cast → Prisma 500) and stamps `studentId` into the audit log.
+> - **11 (deactivated admins):** the `jwt` callback re-checks `isActive` in the
+>   DB every ≤5 min for admin tokens; revoked tokens yield a session no API
+>   guard accepts, and middleware bounces `token.revoked` to login.
+> - **12, 13 (OTP race / hashOtp fallback):** OBSOLETE — the OTP/SMS flow was
+>   removed entirely; signature apply is session-based (`signature/apply`).
+>   Issue 1 (SMS delivery) is obsolete for the same reason.
+> - **14 (signature POST):** `/api/student/signature` now enforces a strict
+>   `data:image/png;base64,` prefix, a 1.5 MB cap, PNG magic-byte verification
+>   of the decoded buffer, and a role-length cap. (The agreement sign route
+>   already had prefix+size checks.)
+> - **generatePassword:** now uses Web Crypto `getRandomValues` with rejection
+>   sampling (was `Math.random()`).
+>
+> Still open (infrastructure, not code): **15** — `getIpAddress` trusts
+> `x-forwarded-for`; make sure the reverse proxy overwrites it. **16** —
+> `STORAGE_PROVIDER=local` is single-instance only; move to S3/R2 + backups
+> before scaling. Also do the load test + DB `connection_limit` items in the
+> checklist below.
+>
+> `tsc --noEmit` → 0 errors after this pass.
+
 > **Update (2026-07-05 re-scan):** Issues 1–6 are now FIXED in code (issue 6
 > body template escaping completed — every interpolation in `buildPdfHtml` now
 > goes through `escapeHtml`). Run `npx prisma db push && npx prisma generate`
@@ -76,14 +111,14 @@ Typecheck passes (`tsc --noEmit` → 0 errors). The issues below are logic, secu
 
 ## Quick pre-launch checklist
 
-- [ ] Configure a real SMS provider + fix issue 1
-- [ ] `try/finally` + concurrency cap on Puppeteer (issue 2)
-- [ ] File-type whitelist + SVG serving fix (issue 3)
-- [ ] Validate `status`/template + lock submitted forms (issue 4)
-- [ ] Unique constraint on Document + upsert (issue 5)
-- [ ] Escape HTML in PDF template (issue 6)
-- [ ] Chunked bulk import (issue 7)
-- [ ] Rate-limit login + OTP (issue 9)
+- [x] ~~Configure a real SMS provider + fix issue 1~~ (obsolete — OTP flow removed)
+- [x] `try/finally` + concurrency cap on Puppeteer (issue 2)
+- [x] File-type whitelist + SVG serving fix (issue 3)
+- [x] Validate `status`/template + lock submitted forms (issue 4)
+- [x] Unique constraint on Document + upsert (issue 5)
+- [x] Escape HTML in PDF template (issue 6)
+- [x] Parallelized bulk import (issue 7)
+- [x] Rate-limit login (issue 9 — OTP gone; in-memory limiter, single instance)
 - [ ] Load test: 200–500 concurrent students on dashboard + form save
 - [ ] Postgres connection pool sized for your instance (set `connection_limit` in `DATABASE_URL`)
 - [ ] Database + uploads backup cron

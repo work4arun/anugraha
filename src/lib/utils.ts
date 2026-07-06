@@ -50,12 +50,24 @@ export function maskAadhaar(aadhaar: string): string {
   return `XXXX XXXX ${aadhaar.slice(-4)}`;
 }
 
-/** Generate a random password */
+/**
+ * Generate a random password using a CSPRNG (Web Crypto — available in
+ * Node 18.17+ and browsers). Math.random() is predictable and must not be
+ * used for credentials. Uses rejection sampling to avoid modulo bias.
+ */
 export function generatePassword(length = 10): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+  const maxValid = Math.floor(256 / chars.length) * chars.length; // reject biased tail
   let password = "";
-  for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  const buf = new Uint8Array(length * 2);
+  while (password.length < length) {
+    crypto.getRandomValues(buf);
+    for (const byte of buf) {
+      if (byte < maxValid) {
+        password += chars.charAt(byte % chars.length);
+        if (password.length === length) break;
+      }
+    }
   }
   return password;
 }

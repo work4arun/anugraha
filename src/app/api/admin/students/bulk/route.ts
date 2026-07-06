@@ -23,8 +23,35 @@ import bcrypt from "bcryptjs";
 import { generatePassword } from "@/lib/utils";
 import { canManageBatch } from "@/lib/authz";
 
+// Bulk imports hash a password per row (~80–100 ms each) — allow up to 5 min
+// on platforms that honour it, and do the heavy work in parallel batches
+// below so a 1,000-row CSV finishes in seconds, not minutes.
+export const maxDuration = 300;
+
+/** How many bcrypt hashes / DB upserts to run concurrently. */
+const HASH_CONCURRENCY = 8;
+const DB_CONCURRENCY = 10;
+
 interface CsvRow {
   [key: string]: string | undefined;
+}
+
+/** Run `fn` over `items` with at most `limit` promises in flight. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 function pick(row: CsvRow, ...keys: string[]): string {
@@ -86,13 +113,23 @@ export async function POST(req: NextRequest) {
   const unmatchedBatches = new Set<string>();
   const errors: string[] = [];
 
+  // ── Phase 1: parse + validate every row up front (cheap, synchronous) ──
+  interface PreparedRow {
+    regNo: string;
+    name: string;
+    email: string | null;
+    mobile: string | null;
+    username: string;
+    providedPassword: string;
+    password: string;
+    batchId: string;
+  }
+
+  const preparedByRegNo = new Map<string, PreparedRow>();
+
   for (const row of students) {
     const regNo = pick(row, "reg_no", "Reg No", "regNo", "Reg. No.", "register_no").toUpperCase();
     const name = pick(row, "name", "Name", "student_name", "Student Name");
-    const email = pick(row, "email", "Email") || null;
-    const mobile = pick(row, "mobile", "Mobile", "phone", "Phone") || null;
-    const username = (pick(row, "username", "Username") || regNo).toUpperCase();
-    const providedPassword = pick(row, "password", "Password");
 
     if (!regNo || !name) {
       skipped++;
@@ -114,64 +151,104 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const password = providedPassword || generatePassword(10);
-    const hash = await bcrypt.hash(password, 10);
+    // Duplicate reg nos inside one CSV: the last row wins (same final state
+    // as the old sequential import), earlier ones are counted as skipped.
+    if (preparedByRegNo.has(regNo)) {
+      skipped++;
+      errors.push(`${regNo}: appears more than once in the file — kept the last occurrence.`);
+    }
 
+    const providedPassword = pick(row, "password", "Password");
+    preparedByRegNo.set(regNo, {
+      regNo,
+      name,
+      email: pick(row, "email", "Email") || null,
+      mobile: pick(row, "mobile", "Mobile", "phone", "Phone") || null,
+      username: (pick(row, "username", "Username") || regNo).toUpperCase(),
+      providedPassword,
+      password: providedPassword || generatePassword(10),
+      batchId: resolvedBatchId,
+    });
+  }
+
+  const prepared = Array.from(preparedByRegNo.values());
+
+  // ── Phase 2: one query for all existing students (instead of one per row) ──
+  const existingRows = await prisma.student.findMany({
+    where: { regNo: { in: prepared.map((p) => p.regNo) } },
+    select: { regNo: true, batchId: true },
+  });
+  const existingByRegNo = new Map(existingRows.map((s) => [s.regNo, s]));
+
+  // Batch independence: a student belongs to exactly ONE batch. Never
+  // silently move a student between batches during import — that is how
+  // "duplicated" batches ended up sharing (stealing) the original batch's
+  // rows. If the reg no already lives in a different batch, report a
+  // conflict so the admin resolves it deliberately.
+  const importable = prepared.filter((p) => {
+    const existing = existingByRegNo.get(p.regNo);
+    if (existing && existing.batchId !== p.batchId) {
+      skipped++;
+      errors.push(
+        `${p.regNo}: already enrolled in another batch — not moved. ` +
+          `Remove them there first (or use a different reg no) if this is intentional.`
+      );
+      return false;
+    }
+    return true;
+  });
+
+  // ── Phase 3: hash passwords in parallel (the former per-row bottleneck) ──
+  const hashes = await mapWithConcurrency(importable, HASH_CONCURRENCY, (p) =>
+    bcrypt.hash(p.password, 10)
+  );
+
+  // ── Phase 4: upsert in parallel batches, collecting per-row failures ──
+  await mapWithConcurrency(importable, DB_CONCURRENCY, async (p, i) => {
+    const existing = existingByRegNo.get(p.regNo);
     try {
-      const existing = await prisma.student.findUnique({ where: { regNo } });
-
-      // Batch independence: a student belongs to exactly ONE batch. Never
-      // silently move a student between batches during import — that is how
-      // "duplicated" batches ended up sharing (stealing) the original batch's
-      // rows. If the reg no already lives in a different batch, report a
-      // conflict so the admin resolves it deliberately.
-      if (existing && existing.batchId !== resolvedBatchId) {
-        skipped++;
-        errors.push(
-          `${regNo}: already enrolled in another batch — not moved. ` +
-            `Remove them there first (or use a different reg no) if this is intentional.`
-        );
-        continue;
-      }
-
       await prisma.student.upsert({
-        where: { regNo },
+        where: { regNo: p.regNo },
         update: {
-          name,
-          email: email ?? undefined,
-          mobile: mobile ?? undefined,
-          username,
+          name: p.name,
+          email: p.email ?? undefined,
+          mobile: p.mobile ?? undefined,
+          username: p.username,
           // Only overwrite the password when the admin explicitly provided one.
-          ...(providedPassword
-            ? { passwordHash: hash, mustResetPassword: false }
+          ...(p.providedPassword
+            ? { passwordHash: hashes[i], mustResetPassword: false }
             : {}),
         },
         create: {
-          regNo,
-          name,
-          email,
-          mobile,
-          username,
-          passwordHash: hash,
-          mustResetPassword: providedPassword ? false : true,
-          batchId: resolvedBatchId,
+          regNo: p.regNo,
+          name: p.name,
+          email: p.email,
+          mobile: p.mobile,
+          username: p.username,
+          passwordHash: hashes[i],
+          mustResetPassword: p.providedPassword ? false : true,
+          batchId: p.batchId,
         },
       });
 
       if (existing) updated++;
       else created++;
       results.push({
-        regNo,
-        name,
-        username,
-        password: providedPassword ? "(set by you)" : password,
+        regNo: p.regNo,
+        name: p.name,
+        username: p.username,
+        password: p.providedPassword ? "(set by you)" : p.password,
         action: existing ? "updated" : "created",
       });
     } catch (e) {
       skipped++;
-      errors.push(`${regNo}: ${e instanceof Error ? e.message : "failed"}`);
+      errors.push(`${p.regNo}: ${e instanceof Error ? e.message : "failed"}`);
     }
-  }
+  });
+
+  // Parallel processing shuffles completion order — keep the returned
+  // credential list deterministic for the admin.
+  results.sort((a, b) => a.regNo.localeCompare(b.regNo));
 
   await prisma.auditLog.create({
     data: {

@@ -12,7 +12,7 @@ export default withAuth(
       return NextResponse.next();
     }
 
-    if (!token) {
+    if (!token || token.revoked) {
       // Not authenticated — redirect to appropriate login
       const loginUrl = pathname.startsWith("/admin")
         ? "/admin/login"

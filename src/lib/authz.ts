@@ -12,6 +12,7 @@
 import { getServerSession } from "next-auth";
 import type { Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "STAFF";
 
@@ -46,4 +47,33 @@ export function canManageBatch(
 export async function getAdminSession(): Promise<Session | null> {
   const session = await getServerSession(authOptions);
   return isAdmin(session) ? session : null;
+}
+
+/**
+ * Load a student together with their batch ownership and check whether the
+ * given admin session may manage them (same rule as batch management).
+ *
+ * Returns:
+ *   { student }          — allowed
+ *   { error: "NOT_FOUND" }  — no such student
+ *   { error: "FORBIDDEN" }  — student exists but belongs to another admin's batch
+ */
+export async function getManagedStudent(
+  session: Session | null,
+  studentId: string
+): Promise<
+  | { student: NonNullable<Awaited<ReturnType<typeof findStudentWithBatch>>>; error?: undefined }
+  | { student?: undefined; error: "NOT_FOUND" | "FORBIDDEN" }
+> {
+  const student = await findStudentWithBatch(studentId);
+  if (!student) return { error: "NOT_FOUND" };
+  if (!canManageBatch(session, student.batch)) return { error: "FORBIDDEN" };
+  return { student };
+}
+
+async function findStudentWithBatch(studentId: string) {
+  return prisma.student.findUnique({
+    where: { id: studentId },
+    include: { batch: { select: { id: true, createdById: true } } },
+  });
 }

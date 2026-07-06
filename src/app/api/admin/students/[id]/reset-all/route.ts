@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canManageBatch } from "@/lib/authz";
 import { getIpAddress } from "@/lib/utils";
 import { recalculateStudentProgress } from "@/lib/progress";
 
@@ -40,10 +41,17 @@ export async function POST(
       include: {
         formResponses: { where: { status: "SUBMITTED" } },
         signedAgreements: { where: { status: { not: "PENDING" } } },
+        batch: { select: { id: true, createdById: true } },
       },
     });
     if (!student) {
       return NextResponse.json({ success: false, error: "Student not found" }, { status: 404 });
+    }
+    if (!canManageBatch(session, student.batch)) {
+      return NextResponse.json(
+        { success: false, error: "You can only manage students in batches you created" },
+        { status: 403 }
+      );
     }
 
     if (student.formResponses.length === 0 && student.signedAgreements.length === 0) {
