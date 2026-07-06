@@ -197,7 +197,7 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -40, opacity: 0 }}
             transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1.0] }}
-            className="px-4 py-6"
+            className="px-4 py-6 pb-36"
           >
             {firstName && (
               <p className="text-sm text-ink-muted mb-4">
