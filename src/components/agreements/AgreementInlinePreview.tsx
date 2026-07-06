@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 // pdf.js worker (same pinned version as the admin placement editor).
 const PDF_WORKER_SRC =
@@ -31,6 +32,11 @@ export function AgreementInlinePreview({
   const sentinelRef = useRef<HTMLDivElement>(null);
   const firedRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Split "something is on screen" from "every page is rendered": we hide the
+  // loading overlay the moment the first page paints (so the student isn't
+  // staring at a blank bar), but keep status="loading" until the whole
+  // document is rendered so the end-of-document detector never fires early.
+  const [firstPageShown, setFirstPageShown] = useState(false);
 
   const fire = useCallback(() => {
     if (!firedRef.current) {
@@ -67,6 +73,9 @@ export function AgreementInlinePreview({
           if (!ctx) continue;
           host.appendChild(canvas);
           await page.render({ canvasContext: ctx, viewport }).promise;
+          if (cancelled) return;
+          // First page is on screen — clear the loading overlay right away.
+          if (i === 1) setFirstPageShown(true);
         }
         if (cancelled) return;
         setStatus("ready");
@@ -123,8 +132,24 @@ export function AgreementInlinePreview({
       >
         <div ref={pagesRef} />
         <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />
-        {status === "loading" && (
-          <p className="p-8 text-center text-xs text-ink-muted">Loading agreement…</p>
+        {/* Initial load: skeleton + spinner until the first page paints. */}
+        {status === "loading" && !firstPageShown && (
+          <div className="flex flex-col items-center justify-center gap-3 py-14 px-8">
+            <Loader2 className="w-6 h-6 text-brand animate-spin" />
+            <p className="text-center text-sm font-medium text-ink">
+              Getting your agreement ready…
+            </p>
+            <p className="text-center text-xs text-ink-muted">
+              This can take a few seconds. Please don&apos;t close this page.
+            </p>
+          </div>
+        )}
+        {/* First page is visible but later pages are still rendering. */}
+        {status === "loading" && firstPageShown && (
+          <p className="flex items-center justify-center gap-1.5 py-3 text-center text-xs text-ink-muted">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Loading the rest of the document…
+          </p>
         )}
         {status === "error" && (
           <p className="p-8 text-center text-xs text-error">
