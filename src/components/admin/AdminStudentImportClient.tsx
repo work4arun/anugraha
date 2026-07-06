@@ -100,16 +100,18 @@ export function AdminStudentImportClient({ batches }: { batches: Batch[] }) {
         mobile: "9876543210",
       },
     ];
-    downloadCsv(Papa.unparse(sample), "student_import_template.csv");
+    downloadCsv(Papa.unparse(sample, { header: true }), "student_import_template.csv");
   }
 
   function downloadCredentials() {
     if (!result) return;
-    downloadCsv(Papa.unparse(result.credentials), "imported_credentials.csv");
+    downloadCsv(Papa.unparse(result.credentials, { header: true }), "imported_credentials.csv");
   }
 
   function downloadCsv(csv: string, filename: string) {
-    const blob = new Blob([csv], { type: "text/csv" });
+    // Prefix with a UTF-8 BOM so Excel (Windows) reliably detects the encoding
+    // and renders the header row correctly instead of mangling/hiding it.
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
