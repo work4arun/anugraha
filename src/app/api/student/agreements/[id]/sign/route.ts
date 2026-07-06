@@ -18,6 +18,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stampAgreement, type SignerImage } from "@/lib/agreement";
+import { resolveFieldAutofill, type AutofillStudent } from "@/lib/agreementAutofill";
 import { generateStudentPdf } from "@/lib/pdf";
 import { recalculateStudentProgress } from "@/lib/progress";
 
@@ -74,6 +75,28 @@ export async function POST(
       );
     }
 
+    // Student record for auto-filled TEXT fields (name, register number,
+    // parent details, …). These stamp from the DB — authoritative — so the
+    // student never has to re-type information the system already holds.
+    const autofillStudent = (await prisma.student.findUnique({
+      where: { id: studentId },
+      select: {
+        name: true,
+        regNo: true,
+        email: true,
+        mobile: true,
+        gender: true,
+        accommodation: true,
+        boardingPoint: true,
+        fatherName: true,
+        fatherMobile: true,
+        fatherOccupation: true,
+        motherName: true,
+        motherMobile: true,
+        motherOccupation: true,
+      },
+    })) as AutofillStudent | null;
+
     // Sanitize values: only accept entries for this agreement's own
     // CHECKBOX/TEXT fields, with the right type for each.
     const values: Record<string, string | boolean> = {};
@@ -84,9 +107,16 @@ export async function POST(
         values[f.id] = v;
         if (f.required && !v) missing.push(f.label || "checkbox");
       } else if (f.fieldType === "TEXT") {
-        const v = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim().slice(0, 200) : "";
-        values[f.id] = v;
-        if (f.required && !v) missing.push(f.label || "text field");
+        // Auto-filled fields take their value from the student record and are
+        // never blocked on manual entry; free-text fields use what was typed.
+        const auto = autofillStudent ? resolveFieldAutofill(f, autofillStudent) : null;
+        if (auto) {
+          values[f.id] = auto.value;
+        } else {
+          const v = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim().slice(0, 200) : "";
+          values[f.id] = v;
+          if (f.required && !v) missing.push(f.label || "text field");
+        }
       } else if (f.fieldType === "DROPDOWN") {
         const opts = Array.isArray(f.options) ? (f.options as string[]) : [];
         const raw = typeof rawValues[f.id] === "string" ? (rawValues[f.id] as string).trim() : "";

@@ -12,6 +12,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageBatch } from "@/lib/authz";
+import { isAutofillKey } from "@/lib/agreementAutofill";
 
 interface FieldInput {
   signerRole: string;
@@ -88,12 +89,22 @@ export async function PUT(
     .map((f, i) => {
       const fieldType = asFieldType(f.fieldType);
       const options = fieldType === "DROPDOWN" ? cleanOptions(f.options) : [];
-      const defaultValue =
+      // DROPDOWN: defaultValue is a pre-selected option.
+      // TEXT: defaultValue holds the auto-fill source key (e.g. "name").
+      let defaultValue: string | null = null;
+      if (
         fieldType === "DROPDOWN" &&
         typeof f.defaultValue === "string" &&
         options.includes(f.defaultValue.trim())
-          ? f.defaultValue.trim()
-          : null;
+      ) {
+        defaultValue = f.defaultValue.trim();
+      } else if (
+        fieldType === "TEXT" &&
+        typeof f.defaultValue === "string" &&
+        isAutofillKey(f.defaultValue.trim())
+      ) {
+        defaultValue = f.defaultValue.trim();
+      }
       return {
         agreementTemplateId: agreement.id,
         signerRole: f.signerRole,

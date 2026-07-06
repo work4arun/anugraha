@@ -13,6 +13,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { prisma } from "./prisma";
 import { uploadFile, readFileBuffer, resolveToDataUri } from "./storage";
+import { resolveFieldAutofill, type AutofillStudent } from "./agreementAutofill";
 
 export interface SignerImage {
   /** signerRole the image belongs to, e.g. "student" | "parent" */
@@ -280,6 +281,14 @@ export interface StudentAgreementField {
   options: string[];
   defaultValue: string | null;
   page: number;
+  /**
+   * When set, this TEXT field is auto-filled from the student's record (name,
+   * register number, parent details, …). `autofillValue` is the resolved value
+   * to show read-only; the student doesn't fill it in and it never counts as a
+   * missing required field.
+   */
+  autofillKey: string | null;
+  autofillValue: string | null;
 }
 
 export interface StudentAgreementItem {
@@ -305,6 +314,27 @@ export async function getStudentAgreementsDetailed(
   studentId: string,
   batchId: string
 ): Promise<StudentAgreementItem[]> {
+  // Load once so TEXT fields bound to student data can be pre-resolved for the
+  // signing UI (the stamped PDF resolves them again server-side at sign time).
+  const autofillStudent = (await prisma.student.findUnique({
+    where: { id: studentId },
+    select: {
+      name: true,
+      regNo: true,
+      email: true,
+      mobile: true,
+      gender: true,
+      accommodation: true,
+      boardingPoint: true,
+      fatherName: true,
+      fatherMobile: true,
+      fatherOccupation: true,
+      motherName: true,
+      motherMobile: true,
+      motherOccupation: true,
+    },
+  })) as AutofillStudent | null;
+
   const agreements = await prisma.agreementTemplate.findMany({
     where: { batchId, isActive: true },
     orderBy: { createdAt: "asc" },
@@ -345,15 +375,20 @@ export async function getStudentAgreementsDetailed(
             f.fieldType === "TEXT" ||
             f.fieldType === "DROPDOWN"
         )
-        .map((f) => ({
-          id: f.id,
-          fieldType: f.fieldType as "CHECKBOX" | "TEXT" | "DROPDOWN",
-          label: f.label,
-          required: f.required,
-          options: Array.isArray(f.options) ? (f.options as string[]) : [],
-          defaultValue: f.defaultValue,
-          page: f.page,
-        })),
+        .map((f) => {
+          const auto = autofillStudent ? resolveFieldAutofill(f, autofillStudent) : null;
+          return {
+            id: f.id,
+            fieldType: f.fieldType as "CHECKBOX" | "TEXT" | "DROPDOWN",
+            label: f.label,
+            required: f.required,
+            options: Array.isArray(f.options) ? (f.options as string[]) : [],
+            defaultValue: f.defaultValue,
+            page: f.page,
+            autofillKey: auto?.key ?? null,
+            autofillValue: auto ? auto.value : null,
+          };
+        }),
       status: (signed?.status ?? "PENDING") as "PENDING" | "PARTIAL" | "COMPLETED",
       signedPdfUrl: signed?.signedPdfUrl ?? null,
       signedAt: signed?.signedAt ? signed.signedAt.toISOString() : null,

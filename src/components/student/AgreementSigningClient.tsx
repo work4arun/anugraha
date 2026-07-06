@@ -70,12 +70,29 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
 
   const missingFields = current.inputFields.filter((f) => {
     if (!f.required) return false;
+    // Auto-filled fields come from the student's record, not manual entry.
+    if (f.autofillKey) return false;
     const v = values[f.id];
     return f.fieldType === "CHECKBOX" ? v !== true : !String(v ?? "").trim();
   });
   const missingRoles = current.roles.filter((r) => !signatures[r]);
   const hasRead = !!readIds[current.id];
   const canSign = hasRead && missingFields.length === 0 && missingRoles.length === 0;
+
+  // Tell the student exactly what's still blocking the button — a silently
+  // disabled CTA with no explanation reads as "broken" even when it's working
+  // as intended (e.g. a second signer's role, or a field further down the
+  // page, still needs attention).
+  const blockers: string[] = [];
+  if (!hasRead) blockers.push("Scroll through the whole agreement above");
+  if (missingFields.length > 0) {
+    blockers.push(
+      `Complete: ${missingFields.map((f) => f.label || "required field").join(", ")}`
+    );
+  }
+  if (missingRoles.length > 0) {
+    blockers.push(`Sign as: ${missingRoles.map(roleLabel).join(", ")}`);
+  }
 
   async function handleSign() {
     if (!canSign || signing) return;
@@ -229,6 +246,23 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
                         ))}
                       </select>
                     </label>
+                  ) : f.autofillKey ? (
+                    <label key={f.id} className="block">
+                      <span className="text-xs font-medium text-ink-muted">
+                        {f.label || "Text"}
+                      </span>
+                      <input
+                        type="text"
+                        value={f.autofillValue ?? ""}
+                        readOnly
+                        aria-readonly
+                        placeholder="—"
+                        className="mt-1 w-full text-sm border border-surface-border rounded-lg px-3 py-2 bg-surface-subtle text-ink-muted cursor-not-allowed"
+                      />
+                      <span className="mt-1 block text-[11px] text-ink-muted">
+                        Filled in automatically from your details.
+                      </span>
+                    </label>
                   ) : (
                     <label key={f.id} className="block">
                       <span className="text-xs font-medium text-ink-muted">
@@ -273,6 +307,11 @@ export function AgreementSigningClient({ agreements, studentName, logoUrl }: Pro
 
       {/* Sticky bottom CTA */}
       <div className="bottom-action-bar">
+        {!canSign && !signing && blockers.length > 0 && (
+          <p className="text-xs text-warning text-center mb-2 px-2">
+            {blockers.join(" · ")}
+          </p>
+        )}
         <Button
           size="lg"
           fullWidth

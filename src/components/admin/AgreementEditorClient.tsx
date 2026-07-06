@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
+import { AUTOFILL_SOURCES } from "@/lib/agreementAutofill";
 
 // pdf.js worker (matches the pinned pdfjs-dist version).
 const PDF_WORKER_SRC =
@@ -39,7 +40,7 @@ interface Field {
   label: string;        // prompt for TEXT/CHECKBOX/DROPDOWN (e.g. "Full name")
   required: boolean;
   options: string[];    // DROPDOWN only
-  defaultValue: string; // DROPDOWN only ("" = no default)
+  defaultValue: string; // DROPDOWN: pre-selected option. TEXT: auto-fill source key ("" = free text)
   page: number;         // 1-based
   x: number;            // normalized 0..1, top-left origin
   y: number;
@@ -394,8 +395,11 @@ export function AgreementEditorClient({
             label: f.label || undefined,
             required: f.required,
             options: f.fieldType === "DROPDOWN" ? f.options : undefined,
+            // DROPDOWN: pre-selected option. TEXT: auto-fill source key.
             defaultValue:
-              f.fieldType === "DROPDOWN" && f.defaultValue ? f.defaultValue : undefined,
+              (f.fieldType === "DROPDOWN" || f.fieldType === "TEXT") && f.defaultValue
+                ? f.defaultValue
+                : undefined,
             page: f.page,
             x: f.x,
             y: f.y,
@@ -632,6 +636,32 @@ export function AgreementEditorClient({
                     </label>
                     )}
                   </div>
+
+                  {sel.fieldType === "TEXT" && (
+                    <div className="border-t border-surface-border pt-2">
+                      <label className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                        Auto-fill from student data:
+                        <select
+                          value={sel.defaultValue}
+                          onChange={(e) =>
+                            updateField(sel.key, { defaultValue: e.target.value })
+                          }
+                          className="text-sm border border-surface-border rounded-lg px-2 py-1 bg-white"
+                        >
+                          <option value="">Student types it in</option>
+                          {AUTOFILL_SOURCES.map((s) => (
+                            <option key={s.key} value={s.key}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-muted">
+                        When set, this box fills automatically from the student&apos;s record and
+                        isn&apos;t shown as an editable field at signing.
+                      </p>
+                    </div>
+                  )}
 
                   {sel.fieldType === "DROPDOWN" && (
                     <div className="border-t border-surface-border pt-2 space-y-1.5">

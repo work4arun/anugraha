@@ -28,6 +28,7 @@ export function AgreementInlinePreview({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const firedRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -69,11 +70,6 @@ export function AgreementInlinePreview({
         }
         if (cancelled) return;
         setStatus("ready");
-        // Whole document visible without scrolling → counts as read.
-        requestAnimationFrame(() => {
-          const el = scrollRef.current;
-          if (el && el.scrollHeight <= el.clientHeight + 8) fire();
-        });
       } catch (err) {
         console.error("[agreements] inline preview failed", err);
         if (!cancelled) {
@@ -89,11 +85,36 @@ export function AgreementInlinePreview({
     };
   }, [url, fire]);
 
+  // "Reached the end" detection via IntersectionObserver on a sentinel placed
+  // right after the last rendered page. This is set up only once all pages
+  // have finished rendering (status === "ready"), so it never fires against a
+  // scrollHeight that's still growing mid-render. It also naturally covers
+  // "the whole document fits without scrolling" — the sentinel is visible in
+  // the viewport the moment the observer attaches — and is immune to the
+  // rounding/zoom quirks that plain scrollTop/scrollHeight math can hit.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const root = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) fire();
+      },
+      { root, threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [status, fire]);
+
   return (
     <div className="mt-3 border border-surface-border rounded-xl overflow-hidden">
       <div
         ref={scrollRef}
         onScroll={(e) => {
+          // Fallback in case IntersectionObserver is unavailable/unreliable
+          // in some environment — belt and suspenders.
           const el = e.currentTarget;
           if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24) fire();
         }}
@@ -101,6 +122,7 @@ export function AgreementInlinePreview({
         style={{ maxHeight }}
       >
         <div ref={pagesRef} />
+        <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />
         {status === "loading" && (
           <p className="p-8 text-center text-xs text-ink-muted">Loading agreement…</p>
         )}
