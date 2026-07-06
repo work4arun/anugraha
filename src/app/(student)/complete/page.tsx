@@ -8,6 +8,8 @@ import {
   Printer,
   Home,
   Sparkles,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -17,20 +19,49 @@ import {
   sectionComplete,
 } from "@/lib/motion";
 
+const WAIT_SECONDS = 120;
+
 export default function CompletePage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("Congratulations");
+  const [secondsLeft, setSecondsLeft] = useState(WAIT_SECONDS);
 
+  // Poll for the PDF in the background — once the merge finishes, this
+  // picks it up without the student needing to do anything.
   useEffect(() => {
-    // Fetch the current student's PDF URL from their profile
-    fetch("/api/student/profile")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.data?.pdfUrl) setPdfUrl(d.data.pdfUrl);
-        if (d.data?.name) setStudentName(d.data.name.split(" ")[0]);
-      })
-      .catch(() => null);
+    let cancelled = false;
+    function fetchProfile() {
+      fetch("/api/student/profile")
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.data?.pdfUrl) setPdfUrl(d.data.pdfUrl);
+          if (d.data?.name) setStudentName(d.data.name.split(" ")[0]);
+        })
+        .catch(() => null);
+    }
+    fetchProfile();
+    const pollId = setInterval(fetchProfile, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(pollId);
+    };
   }, []);
+
+  // Visible 2-minute countdown while the final PDF is being merged.
+  // If the PDF still isn't ready once it hits 0, auto-refresh the page.
+  useEffect(() => {
+    if (pdfUrl) return;
+    if (secondsLeft <= 0) {
+      window.location.reload();
+      return;
+    }
+    const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [secondsLeft, pdfUrl]);
+
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const ss = String(secondsLeft % 60).padStart(2, "0");
 
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center px-4 py-12">
@@ -121,10 +152,33 @@ export default function CompletePage() {
               </Button>
             </>
           ) : (
-            <div className="bg-surface-muted rounded-2xl p-4 text-center">
-              <p className="text-sm text-ink-muted">
-                Your PDF is being prepared… refresh in a moment.
+            <div className="bg-surface-muted rounded-2xl p-5 text-center space-y-3">
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 text-brand animate-spin" />
+                <p className="text-sm font-semibold text-ink">
+                  Finalizing your PDF…
+                </p>
+              </div>
+              <p className="text-xs text-ink-muted leading-relaxed">
+                We&apos;re merging all your documents into your final Anugraha
+                2026 PDF. This usually takes about 2 minutes.
               </p>
+              <div className="text-2xl font-bold text-brand tabular-nums tracking-wide">
+                {mm}:{ss}
+              </div>
+              <p className="text-xs text-ink-muted">
+                Please wait — this page will refresh automatically. If it
+                doesn&apos;t, tap refresh below once the timer ends.
+              </p>
+              <Button
+                size="md"
+                fullWidth
+                variant="outline"
+                icon={<RefreshCw className="w-4 h-4" />}
+                onClick={() => window.location.reload()}
+              >
+                Refresh Now
+              </Button>
             </div>
           )}
         </motion.div>

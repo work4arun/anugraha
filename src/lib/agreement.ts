@@ -204,6 +204,39 @@ export async function stampAgreement(
 }
 
 /**
+ * Agreement completion for a student's batch: how many active agreement
+ * templates exist, how many the student has fully signed (SignedAgreement
+ * with status COMPLETED), and which ones are still pending. This is the
+ * single source of truth for both "is this student done with agreements"
+ * (pending.length === 0) and "how many agreement steps count toward overall
+ * progress" (total / completed) — callers must not compute total/completed
+ * separately, or the two can drift out of sync.
+ */
+export async function getAgreementProgress(
+  studentId: string,
+  batchId: string
+): Promise<{ total: number; completed: number; pending: Array<{ id: string; name: string }> }> {
+  const templates = await prisma.agreementTemplate.findMany({
+    where: { batchId, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (templates.length === 0) return { total: 0, completed: 0, pending: [] };
+
+  const completedRows = await prisma.signedAgreement.findMany({
+    where: {
+      studentId,
+      agreementTemplateId: { in: templates.map((t) => t.id) },
+      status: "COMPLETED",
+    },
+    select: { agreementTemplateId: true },
+  });
+  const completedIds = new Set(completedRows.map((s) => s.agreementTemplateId));
+  const pending = templates.filter((t) => !completedIds.has(t.id));
+
+  return { total: templates.length, completed: completedIds.size, pending };
+}
+
+/**
  * Agreements for this batch that the student hasn't fully signed yet
  * (no SignedAgreement row, or one whose status isn't COMPLETED). Used to
  * gate final PDF generation — an agreement still "awaiting signature"
@@ -213,23 +246,7 @@ export async function getPendingAgreements(
   studentId: string,
   batchId: string
 ): Promise<Array<{ id: string; name: string }>> {
-  const templates = await prisma.agreementTemplate.findMany({
-    where: { batchId, isActive: true },
-    select: { id: true, name: true },
-  });
-  if (templates.length === 0) return [];
-
-  const completed = await prisma.signedAgreement.findMany({
-    where: {
-      studentId,
-      agreementTemplateId: { in: templates.map((t) => t.id) },
-      status: "COMPLETED",
-    },
-    select: { agreementTemplateId: true },
-  });
-  const completedIds = new Set(completed.map((s) => s.agreementTemplateId));
-
-  return templates.filter((t) => !completedIds.has(t.id));
+  return (await getAgreementProgress(studentId, batchId)).pending;
 }
 
 /**

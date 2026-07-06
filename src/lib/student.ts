@@ -3,7 +3,7 @@
  */
 
 import { prisma } from "./prisma";
-import { getPendingAgreements } from "./agreement";
+import { getAgreementProgress } from "./agreement";
 import type { InductionStep, StudentProfile, StepStatus } from "@/types";
 
 export async function getStudentProfile(studentId: string): Promise<StudentProfile | null> {
@@ -57,14 +57,19 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
     };
   });
 
-  // Calc completion
+  // Calc completion — agreements are the final induction step, so they must
+  // count toward completionPct itself (not just gate a separate "all done"
+  // flag), otherwise the progress bar can show 100% while a signature is
+  // still outstanding.
   const requiredSteps = steps.filter((s) => s.required);
   const doneSteps = requiredSteps.filter((s) => s.status === "completed");
-  const completionPct = requiredSteps.length
-    ? Math.round((doneSteps.length / requiredSteps.length) * 100)
-    : 100;
+  const { total: agreementTotal, completed: agreementCompleted, pending: agreementsPending } =
+    await getAgreementProgress(studentId, student.batch.id);
 
-  const agreementsPending = await getPendingAgreements(studentId, student.batch.id);
+  const totalSteps = requiredSteps.length + agreementTotal;
+  const doneCount = doneSteps.length + agreementCompleted;
+  const completionPct = totalSteps > 0 ? Math.round((doneCount / totalSteps) * 100) : 100;
+  const formStepsDone = requiredSteps.length === doneSteps.length;
 
   return {
     id: student.id,
@@ -91,6 +96,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
       },
     },
     steps,
+    formStepsDone,
     agreementsPending,
   };
 }

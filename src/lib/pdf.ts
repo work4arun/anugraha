@@ -57,6 +57,24 @@ function releasePdfSlot(): void {
   if (next) next();
 }
 
+// Bounded wait for a promise. `acquirePdfSlot`/`releasePdfSlot` form an
+// in-process semaphore that lives for the lifetime of the server (this app
+// runs as a single long-lived PM2 process, not a per-request serverless
+// function) — a single Chromium launch or render that hangs forever (a
+// crashed/zombie Chromium process, a stuck page.pdf() call) would otherwise
+// permanently occupy one of only a couple of concurrency slots. Once that
+// happens twice, every subsequent "Generate PDF" click queues forever and
+// never completes — exactly the symptom of PDF generation being "stuck
+// pending". Wrapping the risky calls below turns a silent, permanent hang
+// into a clear, recoverable error instead.
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
 /**
  * Launch a Chromium instance that works both locally and on serverless hosts.
  *
@@ -68,10 +86,17 @@ function releasePdfSlot(): void {
  *   PUPPETEER_EXECUTABLE_PATH).
  */
 async function launchBrowser() {
-  // In production we always use the slim @sparticuz/chromium (a prod dependency).
-  // Full `puppeteer` is a dev-only dependency, used for local development.
+  // Only prefer the slim, Lambda-tuned @sparticuz/chromium when we're
+  // actually running on a serverless platform (or explicitly opted in).
+  // NODE_ENV === "production" is NOT a reliable signal for that — it's true
+  // on every production deploy, including this app's persistent PM2/EC2
+  // setup (see DEPLOYMENT.md), which was set up to run the full, bundled
+  // Chromium via system shared libraries (dnf-installed gtk3/nss/etc). Using
+  // the slim binary there was launching the wrong Chromium variant for that
+  // environment — a plausible cause of PDF generation hanging/never
+  // completing on a long-running server, since a stuck launch there holds
+  // one of only a couple of concurrency slots forever (see acquirePdfSlot).
   const useSlimChromium =
-    process.env.NODE_ENV === "production" ||
     !!process.env.VERCEL ||
     !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
     process.env.PUPPETEER_SERVERLESS === "1";
@@ -173,30 +198,49 @@ export async function generateStudentPdf(
   await acquirePdfSlot();
   let pdfBuffer: Uint8Array;
   try {
-    const browser = await launchBrowser();
+    const browser = await withTimeout(
+      launchBrowser(),
+      20000,
+      "PDF generation timed out while starting the renderer. Please try again."
+    );
     try {
-      const page = await browser.newPage();
-      // Images are inlined as data URIs, so the document has no external requests —
-      // `load` fires immediately and we still cap it with an explicit timeout.
-      await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+      pdfBuffer = await withTimeout(
+        (async () => {
+          const page = await browser.newPage();
+          // Images are inlined as data URIs, so the document has no external requests —
+          // `load` fires immediately and we still cap it with an explicit timeout.
+          await page.setContent(html, { waitUntil: "load", timeout: 30000 });
 
-      pdfBuffer = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
-        displayHeaderFooter: true,
-        headerTemplate: `
-          <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
-            Rathinam Anugraha 2026 — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
-          </div>`,
-        footerTemplate: `
-          <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
-            Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-          </div>`,
-      });
+          return page.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
+            displayHeaderFooter: true,
+            headerTemplate: `
+              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+                Rathinam Anugraha 2026 — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
+              </div>`,
+            footerTemplate: `
+              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+                Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+              </div>`,
+          });
+        })(),
+        40000,
+        "PDF generation timed out while rendering. Please try again."
+      );
     } finally {
       // Always close the browser — a leaked Chromium instance holds ~300 MB.
-      await browser.close().catch(() => {});
+      // Give a graceful close a few seconds; if the process is unresponsive
+      // (the exact scenario that causes an indefinite hang), kill it outright
+      // so it never lingers holding memory or a concurrency slot.
+      await withTimeout(browser.close(), 5000, "browser close timed out").catch(() => {
+        try {
+          browser.process()?.kill("SIGKILL");
+        } catch {
+          // already gone — nothing to do
+        }
+      });
     }
   } finally {
     releasePdfSlot();

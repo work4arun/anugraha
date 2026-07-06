@@ -126,7 +126,7 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
   const nextStep = profile.steps.find(
     (s) => s.status !== "completed" && s.required
   );
-  const stepsDone = profile.completionPct === 100;
+  const stepsDone = profile.formStepsDone;
   const agreementsPending = profile.agreementsPending.length > 0;
   // Agreements are the last step of induction — not "done" until every one
   // is signed, even if every form step is complete.

@@ -151,6 +151,12 @@ export interface StudentProfile {
     };
   };
   steps: InductionStep[];
+  // True once every required form step is submitted — independent of
+  // agreements. `completionPct` folds BOTH form steps and agreements
+  // together, so it can be < 100 even when this is true (agreement still
+  // pending); use this flag when the UI needs to distinguish "forms done,
+  // waiting on a signature" from "fully done".
+  formStepsDone: boolean;
   // Active agreements for this batch the student hasn't fully signed yet.
   // Agreements act as the final step of induction — the final PDF can't be
   // generated while any of these remain.

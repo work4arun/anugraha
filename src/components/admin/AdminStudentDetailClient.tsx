@@ -59,6 +59,10 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
   const [resetAgreementTarget, setResetAgreementTarget] = useState<AgreementSummary | null>(null);
   const [resetAgreementBusy, setResetAgreementBusy] = useState(false);
 
+  // Reset-all-agreements confirmation state
+  const [resetAllAgreementsOpen, setResetAllAgreementsOpen] = useState(false);
+  const [resetAllAgreementsBusy, setResetAllAgreementsBusy] = useState(false);
+
   // Delete-student confirmation state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -67,6 +71,7 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
   // Agreements are the last step of induction — the final PDF can't be
   // generated while any of these is still awaiting the student's signature.
   const pendingAgreements = agreements.filter((a) => a.status !== "COMPLETED");
+  const resettableAgreements = agreements.filter((a) => a.status !== "PENDING");
 
   async function confirmResetAllForms() {
     setResetAllBusy(true);
@@ -83,6 +88,24 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
       toast.error(err instanceof Error ? err.message : "Could not reset forms");
     } finally {
       setResetAllBusy(false);
+    }
+  }
+
+  async function confirmResetAllAgreements() {
+    setResetAllAgreementsBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}/reset-all-agreements`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("All agreements reopened for the student");
+      setResetAllAgreementsOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset agreements");
+    } finally {
+      setResetAllAgreementsBusy(false);
     }
   }
 
@@ -247,6 +270,16 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
               icon={<Undo2 className="w-4 h-4" />}
             >
               Reset All Forms
+            </Button>
+          )}
+          {resettableAgreements.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setResetAllAgreementsOpen(true)}
+              icon={<Undo2 className="w-4 h-4" />}
+            >
+              Reset All Agreements
             </Button>
           )}
           {currentPdfUrl && (
@@ -578,6 +611,43 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
                 icon={<Undo2 className="w-4 h-4" />}
               >
                 Reset all forms
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reset all agreements confirmation modal */}
+      {resetAllAgreementsOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !resetAllAgreementsBusy && setResetAllAgreementsOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <Undo2 className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Reset all agreements</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This reopens all {resettableAgreements.length} signed agreement{resettableAgreements.length === 1 ? "" : "s"} for{" "}
+              <span className="font-medium text-ink">{profile.name}</span>. Their signed copies
+              are cleared, so they'll need to fill in and sign each agreement again.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setResetAllAgreementsOpen(false)} disabled={resetAllAgreementsBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmResetAllAgreements}
+                loading={resetAllAgreementsBusy}
+                icon={<Undo2 className="w-4 h-4" />}
+              >
+                Reset all agreements
               </Button>
             </div>
           </div>

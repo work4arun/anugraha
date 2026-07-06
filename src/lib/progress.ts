@@ -15,7 +15,7 @@
  */
 
 import { prisma } from "./prisma";
-import { getPendingAgreements } from "./agreement";
+import { getAgreementProgress } from "./agreement";
 
 export async function recalculateStudentProgress(studentId: string): Promise<void> {
   const student = await prisma.student.findUnique({
@@ -36,24 +36,30 @@ export async function recalculateStudentProgress(studentId: string): Promise<voi
       .map((r) => r.formTemplateId)
   );
 
-  const pct =
-    requiredTemplateIds.size > 0
-      ? Math.round((submittedIds.size / requiredTemplateIds.size) * 100)
-      : 100;
+  const formStepsDone = requiredTemplateIds.size === 0 || submittedIds.size === requiredTemplateIds.size;
 
-  const stepsDone = pct === 100;
-  // Only bother checking agreements once steps are actually done — avoids an
-  // extra query for the common in-progress case.
-  const agreementsPending = stepsDone
-    ? (await getPendingAgreements(studentId, student.batchId)).length > 0
-    : false;
+  // Agreements are the final induction step — they must count toward
+  // completionPct itself, not just the derived status. Otherwise a student
+  // with all forms submitted but an agreement still unsigned shows 100%
+  // while `status` (correctly) says IN_PROGRESS, which is exactly the
+  // "agreement not signed but progress shows 100%" bug this guards against.
+  const { total: agreementTotal, completed: agreementCompleted, pending: pendingAgreements } =
+    formStepsDone
+      ? await getAgreementProgress(studentId, student.batchId)
+      : { total: 0, completed: 0, pending: [] as Array<{ id: string; name: string }> };
+
+  const totalSteps = requiredTemplateIds.size + agreementTotal;
+  const doneSteps = submittedIds.size + agreementCompleted;
+
+  const pct = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : 100;
+
+  const agreementsPending = pendingAgreements.length > 0;
+  const stepsDone = formStepsDone && !agreementsPending;
 
   const newStatus =
     stepsDone
-      ? agreementsPending
-        ? "IN_PROGRESS"
-        : "COMPLETED"
-      : submittedIds.size > 0
+      ? "COMPLETED"
+      : submittedIds.size > 0 || agreementCompleted > 0
       ? "IN_PROGRESS"
       : "NOT_STARTED";
 
