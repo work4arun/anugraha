@@ -15,6 +15,7 @@ import {
   Lock,
   Copy,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -47,14 +48,45 @@ export function AdminBatchesClient({
   const [dupTarget, setDupTarget] = useState<Batch | null>(null);
   const [dupName, setDupName] = useState("");
   const [dupBusy, setDupBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Batch | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
-  const templates = batches.filter((b) => b.isTemplate);
-  const regular = batches.filter((b) => !b.isTemplate);
+  const templates = batches.filter((b) => b.isTemplate && !deletedIds.has(b.id));
+  const regular = batches.filter((b) => !b.isTemplate && !deletedIds.has(b.id));
 
   function openDuplicate(e: React.MouseEvent, batch: Batch) {
     e.stopPropagation();
     setDupName(`Copy of ${batch.name}`);
     setDupTarget(batch);
+  }
+
+  function openDelete(e: React.MouseEvent, batch: Batch) {
+    e.stopPropagation();
+    setDeleteConfirmText("");
+    setDeleteTarget(batch);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    if (deleteConfirmText.trim() !== deleteTarget.name) {
+      toast.error("Type the batch name exactly as shown to confirm");
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/batches/${deleteTarget.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Batch deleted");
+      setDeletedIds((prev) => new Set(prev).add(deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete batch");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function confirmDuplicate() {
@@ -143,6 +175,16 @@ export function AdminBatchesClient({
             >
               {template ? "Use / Duplicate" : "Duplicate"}
             </Button>
+            {batch.canManage && (
+              <button
+                onClick={(e) => openDelete(e, batch)}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-ink-muted hover:text-error hover:bg-error-light transition-colors shrink-0"
+                aria-label="Delete batch"
+                title="Delete batch"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
@@ -257,6 +299,64 @@ export function AdminBatchesClient({
               </Button>
               <Button onClick={confirmDuplicate} loading={dupBusy} icon={<Copy className="w-4 h-4" />}>
                 Create batch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete batch modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !deleteBusy && setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Delete batch</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              This permanently deletes{" "}
+              <span className="font-medium text-ink">{deleteTarget.name}</span> and its form
+              assignments. This cannot be undone.
+            </p>
+
+            {deleteTarget.studentCount > 0 ? (
+              <p className="text-sm text-error bg-error-light rounded-xl px-3 py-2 mb-4">
+                This batch has {deleteTarget.studentCount} student
+                {deleteTarget.studentCount === 1 ? "" : "s"}. Remove all students before you can
+                delete it.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-ink-muted mb-3">
+                  To confirm, type the batch name exactly (case-sensitive):{" "}
+                  <span className="font-semibold text-ink">{deleteTarget.name}</span>
+                </p>
+                <Input
+                  id="delete-confirm-name-list"
+                  label="Batch name"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                />
+              </>
+            )}
+
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDelete}
+                loading={deleteBusy}
+                disabled={deleteTarget.studentCount > 0 || deleteConfirmText.trim() !== deleteTarget.name}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete batch
               </Button>
             </div>
           </div>

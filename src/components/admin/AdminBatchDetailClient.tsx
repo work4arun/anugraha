@@ -103,6 +103,9 @@ export function AdminBatchDetailClient({
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(batch.logoUrl ?? null);
   const [search, setSearch] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -311,6 +314,29 @@ export function AdminBatchDetailClient({
     }
   }
 
+  function openDelete() {
+    setDeleteConfirmText("");
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (deleteConfirmText.trim() !== batch.name) {
+      toast.error("Type the batch name exactly as shown to confirm");
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/batches/${batch.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Batch deleted");
+      router.push("/admin/batches");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete batch");
+      setDeleting(false);
+    }
+  }
+
   const filtered = batch.students.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -401,6 +427,16 @@ export function AdminBatchDetailClient({
           >
             {batch.isTemplate ? "Use / Duplicate" : "Duplicate"}
           </Button>
+          {canManage && (
+            <button
+              onClick={openDelete}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-ink-muted hover:text-error hover:bg-error-light transition-colors shrink-0"
+              aria-label="Delete batch"
+              title="Delete batch"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           {batch.isTemplate && (
             <Badge variant="default">
               <Sparkles className="w-3 h-3 mr-1 inline" />
@@ -825,6 +861,62 @@ export function AdminBatchDetailClient({
               </Button>
               <Button onClick={duplicateBatch} loading={duplicating} icon={<Copy className="w-4 h-4" />}>
                 Create batch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete batch modal */}
+      {deleteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !deleting && setDeleteOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-ink mb-1">Delete batch</h3>
+            <p className="text-sm text-ink-muted mb-4">
+              This permanently deletes <span className="font-medium text-ink">{batch.name}</span> and
+              its form assignments. This cannot be undone.
+            </p>
+
+            {total > 0 ? (
+              <p className="text-sm text-error bg-error-light rounded-xl px-3 py-2 mb-4">
+                This batch has {total} student{total === 1 ? "" : "s"}. Remove all students before
+                you can delete it.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-ink-muted mb-3">
+                  To confirm, type the batch name exactly (case-sensitive):{" "}
+                  <span className="font-semibold text-ink">{batch.name}</span>
+                </p>
+                <Input
+                  id="delete-confirm-name"
+                  label="Batch name"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                />
+              </>
+            )}
+
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDelete}
+                loading={deleting}
+                disabled={total > 0 || deleteConfirmText.trim() !== batch.name}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete batch
               </Button>
             </div>
           </div>

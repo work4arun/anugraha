@@ -22,8 +22,22 @@ npm install
 echo "==> Generating Prisma client"
 npx prisma generate
 
-echo "==> Syncing database schema"
-npx prisma db push
+# Prefer real, reviewed migrations over `db push` (which can silently drop
+# columns/data on a schema diff). Once a baseline migration exists in
+# prisma/migrations (created locally with `npx prisma migrate dev --name init`
+# and committed to git), this applies only already-committed migration files —
+# it never auto-generates or auto-diffs against the live database, so it can't
+# cause unexpected data loss. Falls back to `db push` until that baseline
+# exists, so this script keeps working either way.
+if [ -d "prisma/migrations" ] && [ -n "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+  echo "==> Applying database migrations"
+  npx prisma migrate deploy
+else
+  echo "==> No prisma/migrations found yet — falling back to schema push"
+  echo "    (run 'npx prisma migrate dev --name init' locally and commit"
+  echo "    prisma/migrations to switch to safe migrations on deploy)"
+  npx prisma db push
+fi
 
 echo "==> Building app"
 npm run build

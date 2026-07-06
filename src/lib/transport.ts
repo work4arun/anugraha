@@ -1,9 +1,9 @@
 /**
  * College bus routes and their boarding points.
  *
- * Source: "Bus Fees 2026-2027.pdf" (all 24 routes). Fees differ per boarding
- * point, so the annual fee is shown next to each boarding point in the
- * dropdown, e.g. "Sulur (₹27,500)".
+ * Source: "Bus Fees 2026-2027.pdf" (all 24 routes). Fees are intentionally
+ * NOT shown next to boarding points in the dropdown — only the boarding
+ * point name is displayed, e.g. "Sulur".
  *
  * This is the single source of truth for the cascading Transport selector on
  * the Registration form (field type "transport_select"). After editing this,
@@ -13,9 +13,10 @@
 
 import type { TransportRoute } from "@/types";
 
-/** Boarding point label with its annual fee. */
-function bp(name: string, fee: string): string {
-  return `${name} (₹${fee})`;
+/** Boarding point label. The fee argument is kept for reference in the
+ *  source data below but is intentionally not shown to students. */
+function bp(name: string, _fee: string): string {
+  return name;
 }
 
 export const TRANSPORT_ROUTES: TransportRoute[] = [

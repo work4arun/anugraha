@@ -28,6 +28,12 @@ export default async function AdminStudentDetailPage({
     where: { studentId: params.id },
   });
 
+  const agreementTemplates = await prisma.agreementTemplate.findMany({
+    where: { batchId: profile.batch.id, isActive: true },
+    include: { signedAgreements: { where: { studentId: params.id } } },
+    orderBy: { createdAt: "asc" },
+  });
+
   return (
     <AdminStudentDetailClient
       profile={profile}
@@ -40,6 +46,12 @@ export default async function AdminStudentDetailPage({
         fileUrl: d.fileUrl,
         reviewStatus: d.reviewStatus,
         reviewNote: d.reviewNote,
+      }))}
+      agreements={agreementTemplates.map((a) => ({
+        id: a.id,
+        name: a.name,
+        status: a.signedAgreements[0]?.status ?? "PENDING",
+        signedAt: a.signedAgreements[0]?.signedAt?.toISOString() ?? null,
       }))}
     />
   );

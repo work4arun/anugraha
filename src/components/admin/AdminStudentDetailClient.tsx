@@ -15,6 +15,13 @@ import { listContainer, listItem } from "@/lib/motion";
 import { cn, generatePassword } from "@/lib/utils";
 import type { StudentProfile } from "@/types";
 
+interface AgreementSummary {
+  id: string;
+  name: string;
+  status: string;
+  signedAt?: string | null;
+}
+
 interface Props {
   profile: StudentProfile;
   pdfUrl?: string | null;
@@ -27,9 +34,10 @@ interface Props {
     reviewStatus: string;
     reviewNote?: string | null;
   }>;
+  agreements?: AgreementSummary[];
 }
 
-export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, documents }: Props) {
+export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, documents, agreements = [] }: Props) {
   const router = useRouter();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
@@ -45,6 +53,10 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
   // Reset-all-forms confirmation state
   const [resetAllOpen, setResetAllOpen] = useState(false);
   const [resetAllBusy, setResetAllBusy] = useState(false);
+
+  // Reset-agreement confirmation state
+  const [resetAgreementTarget, setResetAgreementTarget] = useState<AgreementSummary | null>(null);
+  const [resetAgreementBusy, setResetAgreementBusy] = useState(false);
 
   const submittedStepCount = profile.steps.filter((s) => s.status === "completed").length;
 
@@ -84,6 +96,27 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
       toast.error(err instanceof Error ? err.message : "Could not reset form");
     } finally {
       setResetBusy(false);
+    }
+  }
+
+  async function confirmResetAgreement() {
+    if (!resetAgreementTarget) return;
+    setResetAgreementBusy(true);
+    try {
+      const res = await fetch(`/api/admin/students/${profile.id}/reset-agreement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agreementTemplateId: resetAgreementTarget.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`"${resetAgreementTarget.name}" reopened for the student`);
+      setResetAgreementTarget(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reset agreement");
+    } finally {
+      setResetAgreementBusy(false);
     }
   }
 
@@ -283,6 +316,40 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
             </Card>
           </motion.div>
 
+          {/* Agreements */}
+          {agreements.length > 0 && (
+            <motion.div variants={listItem}>
+              <Card padding="md">
+                <CardHeader><CardTitle>Agreements</CardTitle></CardHeader>
+                <div className="flex flex-col gap-2">
+                  {agreements.map((agreement) => (
+                    <div key={agreement.id} className="flex items-center gap-3 py-2 border-b border-surface-border last:border-0">
+                      {agreement.status === "COMPLETED" ? (
+                        <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+                      )}
+                      <span className="text-sm text-ink flex-1">{agreement.name}</span>
+                      <Badge variant={agreement.status === "COMPLETED" ? "success" : agreement.status === "PARTIAL" ? "warning" : "muted"}>
+                        {agreement.status}
+                      </Badge>
+                      {agreement.status !== "PENDING" && (
+                        <button
+                          onClick={() => setResetAgreementTarget(agreement)}
+                          title="Reset agreement — let the student correct and re-sign"
+                          aria-label="Reset agreement"
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-ink-muted hover:text-error hover:bg-error-light shrink-0"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           {/* Documents review */}
           {documents.length > 0 && (
             <motion.div variants={listItem}>
@@ -473,6 +540,43 @@ export function AdminStudentDetailClient({ profile, pdfUrl, pdfGeneratedAt, docu
                 icon={<Undo2 className="w-4 h-4" />}
               >
                 Reset all forms
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reset agreement confirmation modal */}
+      {resetAgreementTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => !resetAgreementBusy && setResetAgreementTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-error-light flex items-center justify-center">
+                <RotateCcw className="w-4 h-4 text-error" />
+              </div>
+              <h3 className="text-base font-semibold text-ink">Reset agreement</h3>
+            </div>
+            <p className="text-sm text-ink-muted mb-4">
+              This reopens <span className="font-medium text-ink">{resetAgreementTarget.name}</span> for{" "}
+              <span className="font-medium text-ink">{profile.name}</span> to correct and re-sign.
+              Their signed copy is cleared, so they'll need to fill in and sign the agreement again.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setResetAgreementTarget(null)} disabled={resetAgreementBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmResetAgreement}
+                loading={resetAgreementBusy}
+                icon={<RotateCcw className="w-4 h-4" />}
+              >
+                Reset agreement
               </Button>
             </div>
           </div>
