@@ -69,7 +69,10 @@ export function InductionStepClient({ stepData }: { stepData: StepData }) {
     if (nextSlug) {
       router.push(`/induction/${nextSlug}`);
     } else {
-      router.push("/review");
+      // Agreements are the real final step of induction — the agreements
+      // page itself redirects on to /review once nothing is left to sign
+      // (or there are no agreements at all for this batch).
+      router.push("/induction/agreements");
     }
   }
 
@@ -85,7 +88,7 @@ export function InductionStepClient({ stepData }: { stepData: StepData }) {
 
   const handleComplete = useCallback(() => {
     if (isLastStep) {
-      router.push("/review");
+      router.push("/induction/agreements");
     } else {
       goNext(nextStep?.stepSlug);
     }

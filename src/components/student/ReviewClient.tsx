@@ -244,7 +244,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
           ))}
         </motion.div>
 
-        {/* Agreements — the final step, signed on the dashboard */}
+        {/* Agreements — the final step, signed on its own dedicated page */}
         {agreements.length > 0 && (
           <>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-1 mb-3">
@@ -280,7 +280,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
                     </div>
                     {!done && (
                       <button
-                        onClick={() => router.push("/dashboard")}
+                        onClick={() => router.push("/induction/agreements")}
                         className="flex items-center gap-1 text-xs text-brand font-medium min-h-[44px] px-2"
                       >
                         <FileSignature className="w-3.5 h-3.5" />
@@ -356,7 +356,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
           <Button
             size="lg"
             fullWidth
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/induction/agreements")}
             icon={<FileSignature className="w-5 h-5" />}
             variant="secondary"
           >

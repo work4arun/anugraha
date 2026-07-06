@@ -1,20 +1,33 @@
 /**
  * POST /api/student/agreements/[id]/sign
  *
- * Stamps the student's (and parent's) captured signatures onto the agreement
- * PDF at the admin-placed fields, saves the completed PDF, and records it.
+ * Stamps the student's (and parent's) FRESHLY drawn signatures onto the
+ * agreement PDF at the admin-placed fields, saves the completed PDF, and
+ * records it.
  *
- * The student must already have signatures on file (captured with the existing
- * signature flow). Roles are taken from the agreement's placed fields.
+ * The student must sign again here, specifically for this agreement, in the
+ * same request as reviewing it — we deliberately do NOT fall back to reusing
+ * an old signature captured on a regular induction form (that reuse used to
+ * make "signing" feel like it happened automatically, since it required no
+ * new action from the student). Roles are taken from the agreement's placed
+ * fields; the client must supply one fresh PNG data URI per role.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { stampAgreement, collectStudentSignatures } from "@/lib/agreement";
+import { stampAgreement, type SignerImage } from "@/lib/agreement";
 import { generateStudentPdf } from "@/lib/pdf";
 import { recalculateStudentProgress } from "@/lib/progress";
+
+// Generous but bounded — a signature canvas PNG at typical device pixel
+// ratios is a few hundred KB; this just guards against abuse.
+const MAX_SIGNATURE_BYTES = 3 * 1024 * 1024;
+
+function isDataPng(v: unknown): v is string {
+  return typeof v === "string" && v.startsWith("data:image/png;base64,");
+}
 
 export async function POST(
   req: NextRequest,
@@ -27,12 +40,18 @@ export async function POST(
   const studentId = session.user.id;
 
   try {
-    // Optional body: { values: { [fieldId]: string | boolean } } for
-    // CHECKBOX/TEXT fields (DATE fields auto-fill with the signing date).
+    // Body: { values: { [fieldId]: string | boolean }, signatures: { [role]: dataUri } }
+    // `values` covers CHECKBOX/TEXT/DROPDOWN fields (DATE auto-fills with the
+    // signing date). `signatures` must contain a fresh "data:image/png;base64,…"
+    // PNG for every signatory role this agreement requires — drawn on the
+    // signing page itself, not reused from elsewhere.
     const body = (await req.json().catch(() => ({}))) as {
       values?: Record<string, unknown>;
+      signatures?: Record<string, unknown>;
     };
     const rawValues = body.values && typeof body.values === "object" ? body.values : {};
+    const rawSignatures =
+      body.signatures && typeof body.signatures === "object" ? body.signatures : {};
 
     const agreement = await prisma.agreementTemplate.findUnique({
       where: { id: params.id },
@@ -89,13 +108,33 @@ export async function POST(
       );
     }
 
-    const signers = roles.length ? await collectStudentSignatures(studentId, roles) : [];
-    if (roles.length > 0 && signers.length === 0) {
+    // Every role this agreement needs a SIGNATURE field for must have a
+    // fresh PNG in the request — no silent reuse of a previously captured
+    // signature.
+    const missingSignatures: string[] = [];
+    const signers: SignerImage[] = [];
+    for (const role of roles) {
+      const img = rawSignatures[role];
+      if (!isDataPng(img)) {
+        missingSignatures.push(role);
+        continue;
+      }
+      const approxBytes = (img.length * 3) / 4;
+      if (approxBytes > MAX_SIGNATURE_BYTES) {
+        return NextResponse.json(
+          { success: false, error: "Signature image is too large" },
+          { status: 400 }
+        );
+      }
+      signers.push({ role, image: img });
+    }
+    if (missingSignatures.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          code: "NO_SIGNATURE",
-          error: "Please add your signature first, then sign the agreement.",
+          code: "MISSING_SIGNATURE",
+          error: `Please sign: ${missingSignatures.join(", ")}`,
+          missing: missingSignatures,
         },
         { status: 409 }
       );

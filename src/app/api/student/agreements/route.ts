@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getStudentAgreementsDetailed } from "@/lib/agreement";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -20,61 +20,6 @@ export async function GET() {
     return NextResponse.json({ success: true, data: [] });
   }
 
-  const agreements = await prisma.agreementTemplate.findMany({
-    where: { batchId, isActive: true },
-    orderBy: { createdAt: "asc" },
-    include: {
-      fields: {
-        select: {
-          id: true,
-          signerRole: true,
-          fieldType: true,
-          label: true,
-          required: true,
-          options: true,
-          defaultValue: true,
-          page: true,
-        },
-        orderBy: { order: "asc" },
-      },
-      signedAgreements: { where: { studentId } },
-    },
-  });
-
-  return NextResponse.json({
-    success: true,
-    data: agreements.map((a) => {
-      const signed = a.signedAgreements[0];
-      return {
-        id: a.id,
-        name: a.name,
-        pageCount: a.pageCount,
-        originalPdfUrl: a.originalPdfUrl,
-        roles: Array.from(
-          new Set(a.fields.filter((f) => f.fieldType === "SIGNATURE").map((f) => f.signerRole))
-        ),
-        // CHECKBOX/TEXT/DROPDOWN need input from the student at signing time
-        // (send them back as `values` keyed by field id); DATE is auto-filled.
-        inputFields: a.fields
-          .filter(
-            (f) =>
-              f.fieldType === "CHECKBOX" ||
-              f.fieldType === "TEXT" ||
-              f.fieldType === "DROPDOWN"
-          )
-          .map((f) => ({
-            id: f.id,
-            fieldType: f.fieldType,
-            label: f.label,
-            required: f.required,
-            options: Array.isArray(f.options) ? (f.options as string[]) : [],
-            defaultValue: f.defaultValue,
-            page: f.page,
-          })),
-        status: signed?.status ?? "PENDING",
-        signedPdfUrl: signed?.signedPdfUrl ?? null,
-        signedAt: signed?.signedAt ?? null,
-      };
-    }),
-  });
+  const data = await getStudentAgreementsDetailed(studentId, batchId);
+  return NextResponse.json({ success: true, data });
 }

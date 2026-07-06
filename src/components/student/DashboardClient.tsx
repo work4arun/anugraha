@@ -345,6 +345,15 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
           >
             Continue — {nextStep.name}
           </Button>
+        ) : stepsDone && agreementsPending ? (
+          <Button
+            size="lg"
+            fullWidth
+            onClick={() => router.push("/induction/agreements")}
+            iconRight={<ChevronRight className="w-5 h-5" />}
+          >
+            Continue — Sign Agreement{profile.agreementsPending.length === 1 ? "" : "s"}
+          </Button>
         ) : null}
       </div>
     </div>

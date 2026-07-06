@@ -271,3 +271,92 @@ export async function collectStudentSignatures(
   }
   return out;
 }
+
+export interface StudentAgreementField {
+  id: string;
+  fieldType: "CHECKBOX" | "TEXT" | "DROPDOWN";
+  label: string | null;
+  required: boolean;
+  options: string[];
+  defaultValue: string | null;
+  page: number;
+}
+
+export interface StudentAgreementItem {
+  id: string;
+  name: string;
+  pageCount: number;
+  originalPdfUrl: string;
+  /** Signatory roles (e.g. "student", "parent") this agreement needs a fresh signature from. */
+  roles: string[];
+  inputFields: StudentAgreementField[];
+  status: "PENDING" | "PARTIAL" | "COMPLETED";
+  signedPdfUrl: string | null;
+  signedAt: string | null;
+}
+
+/**
+ * The batch's active agreements from the signed-in student's point of view —
+ * shared by the dashboard status list (GET /api/student/agreements) and the
+ * dedicated full-page signing step, so both always agree on what's pending,
+ * what fields need filling, and which roles need a signature.
+ */
+export async function getStudentAgreementsDetailed(
+  studentId: string,
+  batchId: string
+): Promise<StudentAgreementItem[]> {
+  const agreements = await prisma.agreementTemplate.findMany({
+    where: { batchId, isActive: true },
+    orderBy: { createdAt: "asc" },
+    include: {
+      fields: {
+        select: {
+          id: true,
+          signerRole: true,
+          fieldType: true,
+          label: true,
+          required: true,
+          options: true,
+          defaultValue: true,
+          page: true,
+        },
+        orderBy: { order: "asc" },
+      },
+      signedAgreements: { where: { studentId } },
+    },
+  });
+
+  return agreements.map((a) => {
+    const signed = a.signedAgreements[0];
+    return {
+      id: a.id,
+      name: a.name,
+      pageCount: a.pageCount,
+      originalPdfUrl: a.originalPdfUrl,
+      roles: Array.from(
+        new Set(a.fields.filter((f) => f.fieldType === "SIGNATURE").map((f) => f.signerRole))
+      ),
+      // CHECKBOX/TEXT/DROPDOWN need input from the student at signing time
+      // (send them back as `values` keyed by field id); DATE is auto-filled.
+      inputFields: a.fields
+        .filter(
+          (f) =>
+            f.fieldType === "CHECKBOX" ||
+            f.fieldType === "TEXT" ||
+            f.fieldType === "DROPDOWN"
+        )
+        .map((f) => ({
+          id: f.id,
+          fieldType: f.fieldType as "CHECKBOX" | "TEXT" | "DROPDOWN",
+          label: f.label,
+          required: f.required,
+          options: Array.isArray(f.options) ? (f.options as string[]) : [],
+          defaultValue: f.defaultValue,
+          page: f.page,
+        })),
+      status: (signed?.status ?? "PENDING") as "PENDING" | "PARTIAL" | "COMPLETED",
+      signedPdfUrl: signed?.signedPdfUrl ?? null,
+      signedAt: signed?.signedAt ? signed.signedAt.toISOString() : null,
+    };
+  });
+}
