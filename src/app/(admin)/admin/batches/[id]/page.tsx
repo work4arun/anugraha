@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect, notFound } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { canManageBatch } from "@/lib/authz";
+import { canManageBatch, isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { AdminBatchDetailClient } from "@/components/admin/AdminBatchDetailClient";
 import type { Metadata } from "next";
@@ -56,6 +56,7 @@ export default async function AdminBatchDetailPage({
   return (
     <AdminBatchDetailClient
       canManage={canManageBatch(session, batch)}
+      isSuperAdmin={isSuperAdmin(session)}
       agreements={agreements.map((a) => ({
         id: a.id,
         name: a.name,

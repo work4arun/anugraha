@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:split-templates": "tsx scripts/split-shared-templates.ts",
     "db:studio": "prisma studio",
     "typecheck": "tsc --noEmit"
   },

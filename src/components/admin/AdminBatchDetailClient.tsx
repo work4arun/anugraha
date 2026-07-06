@@ -83,10 +83,12 @@ interface AgreementRow {
 export function AdminBatchDetailClient({
   batch,
   canManage,
+  isSuperAdmin = false,
   agreements = [],
 }: {
   batch: BatchData;
   canManage: boolean;
+  isSuperAdmin?: boolean;
   agreements?: AgreementRow[];
 }) {
   const router = useRouter();
@@ -542,9 +544,11 @@ export function AdminBatchDetailClient({
                   </select>
                   <div className="flex gap-2">
                     <Button size="sm" loading={busy} onClick={assignTemplate}>Add step</Button>
-                    <Button size="sm" variant="ghost" onClick={() => router.push("/admin/templates")}>
-                      New form
-                    </Button>
+                    {isSuperAdmin && (
+                      <Button size="sm" variant="ghost" onClick={() => router.push("/admin/templates")}>
+                        New form
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

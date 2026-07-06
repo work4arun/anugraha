@@ -324,29 +324,6 @@ model Document {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SignatureOtp  (one-time password used to authenticate applying a signature)
-// ─────────────────────────────────────────────────────────────────────────────
-
-model SignatureOtp {
-  id             String    @id @default(cuid())
-  studentId      String
-  formTemplateId String
-  // SHA-256 of the OTP (never store the plain code)
-  codeHash       String
-  // Where it was sent (masked mobile kept for audit)
-  destination    String
-  purpose        String    @default("SIGNATURE")
-  attempts       Int       @default(0)
-  maxAttempts    Int       @default(5)
-  expiresAt      DateTime
-  consumedAt     DateTime?
-  createdAt      DateTime  @default(now())
-
-  @@index([studentId, formTemplateId])
-  @@map("signature_otps")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Admin
 // ─────────────────────────────────────────────────────────────────────────────
 

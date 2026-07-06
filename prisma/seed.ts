@@ -510,58 +510,56 @@ async function main() {
   console.log(`  ✓ Form templates: 5 created`);
 
   // ── BatchFormAssignments ──────────────────────────────────────────────────
-  const assignments = [
-    {
-      id: "bfa-reg",
-      batchId: batch.id,
-      formTemplateId: registrationTemplate.id,
-      order: 1,
-      stepSlug: "registration",
-      required: true,
-    },
-    {
-      id: "bfa-conduct",
-      batchId: batch.id,
-      formTemplateId: conductTemplate.id,
-      order: 2,
-      stepSlug: "code-of-conduct",
-      required: true,
-    },
-    {
-      id: "bfa-placement",
-      batchId: batch.id,
-      formTemplateId: placementTemplate.id,
-      order: 3,
-      stepSlug: "placement-undertaking",
-      required: true,
-    },
-    {
-      id: "bfa-deliverables",
-      batchId: batch.id,
-      formTemplateId: deliverablesTemplate.id,
-      order: 4,
-      stepSlug: "deliverables",
-      required: true,
-    },
-    {
-      id: "bfa-documents",
-      batchId: batch.id,
-      formTemplateId: documentTemplate.id,
-      order: 5,
-      stepSlug: "documents",
-      required: true,
-    },
+  // The templates above are shared *library masters* (isLibrary=true) that show
+  // in the Templates page. A batch must NEVER be assigned a library master
+  // directly — otherwise editing one batch's step would mutate the shared row
+  // and leak into every other batch using it. Instead, each batch gets its own
+  // private copy (isLibrary=false) of each template, mirroring what the runtime
+  // create/duplicate/assign routes do. This helper makes that private copy (with
+  // deterministic ids so re-seeding stays idempotent) and links it to the batch.
+  const libraryStepDefs = [
+    { key: "reg",          template: registrationTemplate, slug: "registration" },
+    { key: "conduct",      template: conductTemplate,      slug: "code-of-conduct" },
+    { key: "placement",    template: placementTemplate,    slug: "placement-undertaking" },
+    { key: "deliverables", template: deliverablesTemplate, slug: "deliverables" },
+    { key: "documents",    template: documentTemplate,     slug: "documents" },
   ];
 
-  for (const a of assignments) {
-    await prisma.batchFormAssignment.upsert({
-      where: { id: a.id },
-      update: {},
-      create: a,
-    });
+  async function seedBatchSteps(targetBatchId: string, prefix: string) {
+    let order = 1;
+    for (const def of libraryStepDefs) {
+      const t = def.template;
+      const privateTpl = await prisma.formTemplate.upsert({
+        where: { id: `tpl-${prefix}-${def.key}` },
+        update: {},
+        create: {
+          id: `tpl-${prefix}-${def.key}`,
+          name: t.name,
+          description: t.description,
+          type: t.type,
+          schema: t.schema as Prisma.InputJsonValue,
+          signatoryRoles: t.signatoryRoles as Prisma.InputJsonValue,
+          isLibrary: false,
+        },
+      });
+      await prisma.batchFormAssignment.upsert({
+        where: { id: `bfa-${prefix}-${def.key}` },
+        update: {},
+        create: {
+          id: `bfa-${prefix}-${def.key}`,
+          batchId: targetBatchId,
+          formTemplateId: privateTpl.id,
+          order: order++,
+          stepSlug: def.slug,
+          required: true,
+        },
+      });
+    }
   }
 
-  console.log(`  ✓ Batch form assignments: ${assignments.length}`);
+  await seedBatchSteps(batch.id, "batch");
+
+  console.log(`  ✓ Batch form assignments: ${libraryStepDefs.length}`);
 
   // ── Sample Template Batch ─────────────────────────────────────────────────
   // A reusable "sample" every admin can see and duplicate. Owned by the super
@@ -585,23 +583,11 @@ async function main() {
     },
   });
 
-  const sampleAssignments = [
-    { id: "bfa-sample-reg",          formTemplateId: registrationTemplate.id, order: 1, stepSlug: "registration" },
-    { id: "bfa-sample-conduct",      formTemplateId: conductTemplate.id,      order: 2, stepSlug: "code-of-conduct" },
-    { id: "bfa-sample-placement",    formTemplateId: placementTemplate.id,    order: 3, stepSlug: "placement-undertaking" },
-    { id: "bfa-sample-deliverables", formTemplateId: deliverablesTemplate.id, order: 4, stepSlug: "deliverables" },
-    { id: "bfa-sample-documents",    formTemplateId: documentTemplate.id,     order: 5, stepSlug: "documents" },
-  ];
+  // The sample batch also gets its own private copies, independent of both the
+  // library masters and the demo batch above.
+  await seedBatchSteps(sampleBatch.id, "sample");
 
-  for (const a of sampleAssignments) {
-    await prisma.batchFormAssignment.upsert({
-      where: { id: a.id },
-      update: {},
-      create: { ...a, batchId: sampleBatch.id, required: true },
-    });
-  }
-
-  console.log(`  ✓ Sample template batch: ${sampleBatch.name} (${sampleAssignments.length} steps)`);
+  console.log(`  ✓ Sample template batch: ${sampleBatch.name} (${libraryStepDefs.length} steps)`);
 
   // ── Test Student ──────────────────────────────────────────────────────────
   const studentPasswordHash = await bcrypt.hash("Test@1234", 12);

@@ -14,6 +14,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdmin } from "@/lib/authz";
 
 type TemplateType =
   | "REGISTRATION"
@@ -77,6 +78,14 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.userType !== "admin") {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+  // Building the shared template library is a super-admin task. Regular admins
+  // compose batches from existing templates and customise them per batch.
+  if (!isSuperAdmin(session)) {
+    return NextResponse.json(
+      { success: false, error: "Only a super admin can create shared templates" },
+      { status: 403 }
+    );
   }
 
   try {

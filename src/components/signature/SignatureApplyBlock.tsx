@@ -1,14 +1,12 @@
 "use client";
 
 /**
- * SignatureOtpBlock — reuse-to-sign for forms AFTER the Registration form.
+ * SignatureApplyBlock — reuse-to-sign for forms AFTER the Registration form.
  *
  * The student's signature captured on the Registration form is loaded and
- * applied with a single confirming click (they're already authenticated by
- * their session — no OTP). Any signatory role that has no saved signature
- * (e.g. an authorised signatory) falls back to a draw pad.
- *
- * (Component name kept for backwards compatibility with existing imports.)
+ * applied with a single confirming click — they're already authenticated by
+ * their session, so no OTP or SMS step is involved. Any signatory role that has
+ * no saved signature (e.g. an authorised signatory) falls back to a draw pad.
  */
 
 import { useState } from "react";
@@ -34,7 +32,7 @@ interface Props {
   onSigned: (partial: Record<string, string>) => void;
 }
 
-export function SignatureOtpBlock({
+export function SignatureApplyBlock({
   formTemplateId,
   signatoryRoles,
   masterSignatures,

@@ -23,7 +23,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { SignatureOtpBlock } from "@/components/signature/SignatureOtpBlock";
+import { SignatureApplyBlock } from "@/components/signature/SignatureApplyBlock";
 import { SkipStep } from "@/components/forms/SkipStep";
 import { listContainer, listItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -317,8 +317,8 @@ export function DeliverablesTable({
         <p className="text-sm text-ink leading-relaxed">{declaration}</p>
       </Card>
 
-      {/* Signatures — authenticate with OTP to apply your saved signature */}
-      <SignatureOtpBlock
+      {/* Signatures — apply your saved signature with a single tap */}
+      <SignatureApplyBlock
         formTemplateId={formTemplateId}
         signatoryRoles={signatoryRoles}
         masterSignatures={priorSignatures}

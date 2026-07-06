@@ -13,6 +13,10 @@ export default async function AdminTemplatesPage() {
   if (!session || session.user.userType !== "admin") redirect("/admin/login");
 
   const superAdmin = isSuperAdmin(session);
+  // The template library is a super-admin-only area — regular admins compose
+  // batches from existing templates and customise them per batch, so exposing
+  // the shared library here only causes confusion.
+  if (!superAdmin) redirect("/admin/dashboard");
 
   const [templates, admins] = await Promise.all([
     prisma.formTemplate.findMany({

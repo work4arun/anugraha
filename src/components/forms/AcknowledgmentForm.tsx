@@ -8,7 +8,7 @@ import { CheckCircle2, ArrowRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { SignatureOtpBlock } from "@/components/signature/SignatureOtpBlock";
+import { SignatureApplyBlock } from "@/components/signature/SignatureApplyBlock";
 import { SkipStep } from "@/components/forms/SkipStep";
 import { listContainer, listItem } from "@/lib/motion";
 import type { AcknowledgmentSchema } from "@/types";
@@ -135,9 +135,9 @@ export function AcknowledgmentForm({
           </Card>
         </motion.div>
 
-        {/* Signatures — authenticate with OTP to apply your saved signature */}
+        {/* Signatures — apply your saved signature with a single tap */}
         <motion.div variants={listItem}>
-          <SignatureOtpBlock
+          <SignatureApplyBlock
             formTemplateId={formTemplateId}
             signatoryRoles={signatoryRoles}
             masterSignatures={priorSignatures}

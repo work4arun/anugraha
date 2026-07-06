@@ -156,14 +156,16 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
             >
               Batches
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/admin/templates")}
-              icon={<Settings className="w-4 h-4" />}
-            >
-              Templates
-            </Button>
+            {isSuperAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/admin/templates")}
+                icon={<Settings className="w-4 h-4" />}
+              >
+                Templates
+              </Button>
+            )}
             {isSuperAdmin && (
               <Button
                 variant="ghost"
@@ -349,15 +351,17 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
               >
                 Manage Batches
               </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                fullWidth
-                onClick={() => router.push("/admin/templates")}
-                icon={<Settings className="w-5 h-5" />}
-              >
-                Form Templates
-              </Button>
+              {isSuperAdmin && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => router.push("/admin/templates")}
+                  icon={<Settings className="w-5 h-5" />}
+                >
+                  Form Templates
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="lg"

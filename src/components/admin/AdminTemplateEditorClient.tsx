@@ -63,6 +63,13 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
   const searchParams = useSearchParams();
   // Where "Back" should return to — the batch that opened this editor, or the templates list.
   const returnTo = searchParams.get("returnTo") || "/admin/templates";
+  // If we were opened from a batch step, capture that batch id so the server can
+  // keep edits private to this batch (copy-on-write) instead of mutating a
+  // shared/library template that other batches also use.
+  const batchId = returnTo.match(/\/admin\/batches\/([^/?#]+)/)?.[1];
+  // The template id we actually save to — may change if the server forks a
+  // private copy for the batch on first save.
+  const [templateId, setTemplateId] = useState(template.id);
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState(template.name);
@@ -200,16 +207,25 @@ export function AdminTemplateEditorClient({ template }: { template: TemplateData
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/templates/${template.id}`, {
+      const res = await fetch(`/api/admin/templates/${templateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || null,
           schema: buildSchema(),
+          batchId,
         }),
       });
       if (!res.ok) throw new Error();
+      const saved = (await res.json().catch(() => null)) as
+        | { data?: { id?: string } }
+        | null;
+      // If the server forked a batch-private copy, keep editing that copy so
+      // subsequent saves don't fork again.
+      if (saved?.data?.id && saved.data.id !== templateId) {
+        setTemplateId(saved.data.id);
+      }
       toast.success("Template saved");
       router.refresh();
     } catch {
