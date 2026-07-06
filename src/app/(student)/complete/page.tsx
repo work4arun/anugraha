@@ -48,14 +48,12 @@ export default function CompletePage() {
     };
   }, []);
 
-  // Visible 2-minute countdown while the final PDF is being merged.
-  // If the PDF still isn't ready once it hits 0, auto-refresh the page.
+  // Visible 2-minute countdown to keep students engaged while the final
+  // PDF merges in the background. It counts down once and stops — the
+  // actual "refresh" happens silently via the polling above, which swaps
+  // in the download button the moment the PDF is ready. No page reload.
   useEffect(() => {
-    if (pdfUrl) return;
-    if (secondsLeft <= 0) {
-      window.location.reload();
-      return;
-    }
+    if (pdfUrl || secondsLeft <= 0) return;
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [secondsLeft, pdfUrl]);
@@ -167,8 +165,9 @@ export default function CompletePage() {
                 {mm}:{ss}
               </div>
               <p className="text-xs text-ink-muted">
-                Please wait — this page will refresh automatically. If it
-                doesn&apos;t, tap refresh below once the timer ends.
+                {secondsLeft > 0
+                  ? "Please wait — this page updates automatically once it's ready."
+                  : "Almost there — still finishing up. Hang tight, or tap refresh below."}
               </p>
               <Button
                 size="md"

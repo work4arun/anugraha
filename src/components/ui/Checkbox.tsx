@@ -34,11 +34,11 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
             animate={
               props.checked
                 ? { backgroundColor: "var(--color-brand)", borderColor: "var(--color-brand)" }
-                : { backgroundColor: "white", borderColor: "var(--color-border)" }
+                : { backgroundColor: "white", borderColor: "var(--color-ink-faint)" }
             }
             transition={{ duration: 0.15 }}
             className={cn(
-              "w-6 h-6 rounded-md border-2 flex items-center justify-center",
+              "w-6 h-6 rounded-md border-2 flex items-center justify-center shadow-sm",
               "transition-shadow duration-150",
               "peer-focus-visible:ring-2 peer-focus-visible:ring-brand/30",
               error && "border-error"
