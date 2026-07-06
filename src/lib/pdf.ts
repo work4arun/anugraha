@@ -7,12 +7,31 @@
 import { PDFDocument } from "pdf-lib";
 import { prisma } from "./prisma";
 import { uploadFile, resolveToDataUri, readFileBuffer } from "./storage";
-import { renderAgreementBytes, collectStudentSignatures } from "./agreement";
+import { renderAgreementBytes, collectStudentSignatures, getPendingAgreements } from "./agreement";
 import { pdfFilename, formatDate } from "./utils";
 
 interface PdfGenerationResult {
   url: string;
   filename: string;
+}
+
+/**
+ * Thrown when the final PDF is requested but one or more of the batch's
+ * agreements is still awaiting the student's signature. Agreements are
+ * effectively the last "step" of induction — the final record must not be
+ * generated (and the student marked COMPLETED) until every one is signed.
+ */
+export class AgreementsPendingError extends Error {
+  pending: string[];
+  constructor(pending: string[]) {
+    super(
+      pending.length === 1
+        ? `Cannot generate the final PDF — "${pending[0]}" is still awaiting signature.`
+        : `Cannot generate the final PDF — ${pending.length} agreements are still awaiting signature: ${pending.join(", ")}.`
+    );
+    this.name = "AgreementsPendingError";
+    this.pending = pending;
+  }
 }
 
 // ── Concurrency limiter ──────────────────────────────────────────────────────
@@ -120,6 +139,15 @@ export async function generateStudentPdf(
   });
 
   if (!student) throw new Error("Student not found");
+
+  // Guard: the final PDF must not be produced (and the student marked
+  // COMPLETED) while any of the batch's agreements is still awaiting
+  // signature — agreements are the last step of induction. Check this
+  // before launching Chromium so an incomplete request fails fast.
+  const pendingAgreements = await getPendingAgreements(studentId, student.batchId);
+  if (pendingAgreements.length > 0) {
+    throw new AgreementsPendingError(pendingAgreements.map((a) => a.name));
+  }
 
   // Embed every image the PDF references as a base64 data URI. Puppeteer's
   // `setContent` has no page origin, so relative urls (/api/uploads/...) can't

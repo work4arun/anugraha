@@ -3,6 +3,7 @@
  */
 
 import { prisma } from "./prisma";
+import { getPendingAgreements } from "./agreement";
 import type { InductionStep, StudentProfile, StepStatus } from "@/types";
 
 export async function getStudentProfile(studentId: string): Promise<StudentProfile | null> {
@@ -63,6 +64,8 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
     ? Math.round((doneSteps.length / requiredSteps.length) * 100)
     : 100;
 
+  const agreementsPending = await getPendingAgreements(studentId, student.batch.id);
+
   return {
     id: student.id,
     regNo: student.regNo,
@@ -88,6 +91,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
       },
     },
     steps,
+    agreementsPending,
   };
 }
 

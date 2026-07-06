@@ -126,7 +126,11 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
   const nextStep = profile.steps.find(
     (s) => s.status !== "completed" && s.required
   );
-  const allDone = profile.completionPct === 100;
+  const stepsDone = profile.completionPct === 100;
+  const agreementsPending = profile.agreementsPending.length > 0;
+  // Agreements are the last step of induction — not "done" until every one
+  // is signed, even if every form step is complete.
+  const allDone = stepsDone && !agreementsPending;
 
   function handleContinue(slug: string) {
     router.push(`/induction/${slug}`);
@@ -189,6 +193,8 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
                   ? `You're all set, ${firstName}! 🎉`
                   : nextStep
                   ? `Let's finish your induction — ${profile.completionPct}% there.`
+                  : stepsDone && agreementsPending
+                  ? "Just one last step — sign your agreement(s) below."
                   : "Let's get your induction started."}
               </p>
               <p className="text-brand-700 text-sm mt-1 truncate">
@@ -247,6 +253,29 @@ export function DashboardClient({ profile }: { profile: StudentProfile }) {
                 <p className="font-semibold text-success">Induction Complete!</p>
                 <p className="text-sm text-success/80 mt-0.5">
                   Download your Anugraha 2026 PDF below
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Steps done, agreement(s) still awaiting signature */}
+        <AnimatePresence>
+          {stepsDone && agreementsPending && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-warning-light border border-warning/20 rounded-2xl p-5 mb-6 flex items-center gap-4"
+            >
+              <div className="w-12 h-12 bg-warning/10 rounded-2xl flex items-center justify-center shrink-0">
+                <FileText className="w-6 h-6 text-warning" />
+              </div>
+              <div>
+                <p className="font-semibold text-warning">One last step</p>
+                <p className="text-sm text-warning/80 mt-0.5">
+                  Sign the agreement{profile.agreementsPending.length === 1 ? "" : "s"} below to
+                  finish your induction
                 </p>
               </div>
             </motion.div>

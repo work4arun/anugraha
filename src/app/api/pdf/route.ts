@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { generateStudentPdf } from "@/lib/pdf";
+import { generateStudentPdf, AgreementsPendingError } from "@/lib/pdf";
 
 // PDF generation needs the Node.js runtime (Puppeteer/Chromium) and more time
 // than the default serverless budget.
@@ -34,6 +34,14 @@ export async function POST(req: NextRequest) {
     const result = await generateStudentPdf(studentId);
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
+    if (error instanceof AgreementsPendingError) {
+      // Expected validation failure, not a server error — surface the exact
+      // message so the student/admin knows which agreement(s) to sign first.
+      return NextResponse.json(
+        { success: false, error: error.message, code: "AGREEMENTS_PENDING", pending: error.pending },
+        { status: 409 }
+      );
+    }
     console.error("[pdf POST]", error);
     const message = error instanceof Error ? error.message : String(error);
     // Surface the real cause outside production so failures are debuggable

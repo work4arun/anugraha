@@ -12,6 +12,7 @@ import {
   ChevronRight,
   GraduationCap,
   ArrowLeft,
+  FileSignature,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -57,12 +58,16 @@ interface ReviewData {
     reviewStatus: string;
   }>;
   allSubmitted: boolean;
+  agreements: Array<{ id: string; name: string; status: string }>;
+  agreementsPending: Array<{ id: string; name: string }>;
 }
 
 export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
-  const { student, batch, steps, documents, allSubmitted } = reviewData;
+  const { student, batch, steps, documents, allSubmitted, agreements, agreementsPending } = reviewData;
+  const hasPendingAgreements = agreementsPending.length > 0;
+  const readyForPdf = allSubmitted && !hasPendingAgreements;
 
   async function handleFinalSubmit() {
     setGenerating(true);
@@ -72,11 +77,12 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id }),
       });
-      if (!res.ok) throw new Error("PDF generation failed");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "PDF generation failed");
       toast.success("Anugraha 2026 form is ready! Redirecting…");
       router.push("/complete");
-    } catch {
-      toast.error("Failed to generate PDF — please try again");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate PDF — please try again");
     } finally {
       setGenerating(false);
     }
@@ -121,6 +127,22 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
               </p>
               <p className="text-xs text-warning/80 mt-0.5">
                 Complete all required steps before final submission
+              </p>
+            </div>
+          </motion.div>
+        ) : hasPendingAgreements ? (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start gap-3 bg-warning-light border border-warning/30 rounded-2xl p-4 mb-5"
+          >
+            <FileSignature className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-warning">
+                One last step, {firstName} — sign your agreement{agreementsPending.length === 1 ? "" : "s"}
+              </p>
+              <p className="text-xs text-warning/80 mt-0.5">
+                Head back to your dashboard to sign before the final PDF can be generated
               </p>
             </div>
           </motion.div>
@@ -222,6 +244,56 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
           ))}
         </motion.div>
 
+        {/* Agreements — the final step, signed on the dashboard */}
+        {agreements.length > 0 && (
+          <>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-1 mb-3">
+              Agreements (final step)
+            </h2>
+            <motion.div
+              variants={listContainer}
+              initial="hidden"
+              animate="visible"
+              className="flex flex-col gap-3 mb-5"
+            >
+              {agreements.map((a) => {
+                const done = a.status === "COMPLETED";
+                return (
+                  <motion.div
+                    key={a.id}
+                    variants={listItem}
+                    className={cn(
+                      "flex items-center gap-3 p-4 rounded-2xl border-2",
+                      done ? "border-success/30 bg-success-light/10" : "border-warning/30 bg-warning-light/20"
+                    )}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+                    ) : (
+                      <FileSignature className="w-5 h-5 text-warning shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink">{a.name}</p>
+                      <Badge variant={done ? "success" : "warning"} dot className="mt-1">
+                        {done ? "Signed" : a.status === "PARTIAL" ? "Partially signed" : "Awaiting signature"}
+                      </Badge>
+                    </div>
+                    {!done && (
+                      <button
+                        onClick={() => router.push("/dashboard")}
+                        className="flex items-center gap-1 text-xs text-brand font-medium min-h-[44px] px-2"
+                      >
+                        <FileSignature className="w-3.5 h-3.5" />
+                        Sign
+                      </button>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </>
+        )}
+
         {/* Documents summary */}
         {documents.length > 0 && (
           <>
@@ -257,7 +329,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
 
       {/* Sticky bottom CTA */}
       <div className="bottom-action-bar">
-        {allSubmitted ? (
+        {readyForPdf ? (
           <Button
             size="lg"
             fullWidth
@@ -267,7 +339,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
           >
             {generating ? "Generating PDF…" : "Confirm & Generate PDF"}
           </Button>
-        ) : (
+        ) : !allSubmitted ? (
           <Button
             size="lg"
             fullWidth
@@ -279,6 +351,16 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
             variant="secondary"
           >
             Complete {incompleteRequired.length} remaining step(s)
+          </Button>
+        ) : (
+          <Button
+            size="lg"
+            fullWidth
+            onClick={() => router.push("/dashboard")}
+            icon={<FileSignature className="w-5 h-5" />}
+            variant="secondary"
+          >
+            Sign {agreementsPending.length} agreement{agreementsPending.length === 1 ? "" : "s"} to finish
           </Button>
         )}
       </div>

@@ -151,6 +151,10 @@ export interface StudentProfile {
     };
   };
   steps: InductionStep[];
+  // Active agreements for this batch the student hasn't fully signed yet.
+  // Agreements act as the final step of induction — the final PDF can't be
+  // generated while any of these remain.
+  agreementsPending: Array<{ id: string; name: string }>;
 }
 
 // ── Admin Dashboard ────────────────────────────────────────────────────────

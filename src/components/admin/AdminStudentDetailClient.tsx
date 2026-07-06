@@ -64,6 +64,9 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const submittedStepCount = profile.steps.filter((s) => s.status === "completed").length;
+  // Agreements are the last step of induction — the final PDF can't be
+  // generated while any of these is still awaiting the student's signature.
+  const pendingAgreements = agreements.filter((a) => a.status !== "COMPLETED");
 
   async function confirmResetAllForms() {
     setResetAllBusy(true);
@@ -266,7 +269,13 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
             variant="secondary"
             onClick={generatePdf}
             loading={pdfBusy}
+            disabled={pendingAgreements.length > 0}
             icon={<FileDown className="w-4 h-4" />}
+            title={
+              pendingAgreements.length > 0
+                ? `Waiting on ${pendingAgreements.length} agreement${pendingAgreements.length === 1 ? "" : "s"} to be signed: ${pendingAgreements.map((a) => a.name).join(", ")}`
+                : undefined
+            }
           >
             {currentPdfUrl ? "Regenerate PDF" : "Generate PDF"}
           </Button>

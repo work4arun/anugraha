@@ -204,6 +204,35 @@ export async function stampAgreement(
 }
 
 /**
+ * Agreements for this batch that the student hasn't fully signed yet
+ * (no SignedAgreement row, or one whose status isn't COMPLETED). Used to
+ * gate final PDF generation — an agreement still "awaiting signature"
+ * must not be treated as done.
+ */
+export async function getPendingAgreements(
+  studentId: string,
+  batchId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const templates = await prisma.agreementTemplate.findMany({
+    where: { batchId, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (templates.length === 0) return [];
+
+  const completed = await prisma.signedAgreement.findMany({
+    where: {
+      studentId,
+      agreementTemplateId: { in: templates.map((t) => t.id) },
+      status: "COMPLETED",
+    },
+    select: { agreementTemplateId: true },
+  });
+  const completedIds = new Set(completed.map((s) => s.agreementTemplateId));
+
+  return templates.filter((t) => !completedIds.has(t.id));
+}
+
+/**
  * Convenience: resolve a student's stored signature images (from the existing
  * Signature records) into SignerImage[] for the given roles. Reuses the same
  * canvas signatures captured during induction.

@@ -56,6 +56,21 @@ export default async function ReviewPage() {
   const allRequired = steps.filter((s) => s.required);
   const allSubmitted = allRequired.every((s) => s.status === "SUBMITTED");
 
+  // Agreements are the last step of induction — shown as a final checklist
+  // entry here, and the final PDF can't be generated until every one is
+  // signed (status COMPLETED).
+  const agreementTemplates = await prisma.agreementTemplate.findMany({
+    where: { batchId: student.batch.id, isActive: true },
+    orderBy: { createdAt: "asc" },
+    include: { signedAgreements: { where: { studentId } } },
+  });
+  const agreements = agreementTemplates.map((a) => ({
+    id: a.id,
+    name: a.name,
+    status: a.signedAgreements[0]?.status ?? "PENDING",
+  }));
+  const agreementsPending = agreements.filter((a) => a.status !== "COMPLETED");
+
   const reviewData = {
     student: {
       id: student.id,
@@ -87,6 +102,8 @@ export default async function ReviewPage() {
       reviewStatus: d.reviewStatus,
     })),
     allSubmitted,
+    agreements,
+    agreementsPending: agreementsPending.map((a) => ({ id: a.id, name: a.name })),
   };
 
   return <ReviewClient reviewData={reviewData} />;
