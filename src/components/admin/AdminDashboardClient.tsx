@@ -19,6 +19,7 @@ import {
   Upload,
   ShieldCheck,
   KeyRound,
+  FolderArchive,
 } from "lucide-react";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -100,6 +101,58 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+
+  // Download a single .zip with every student's PDF, across all batches.
+  // Generating any missing PDFs can take a while, so this is a long request —
+  // keep the button disabled and show progress feedback until it lands.
+  async function downloadAllPdfs() {
+    if (downloadingZip) return;
+    setDownloadingZip(true);
+    const pending = toast.loading(
+      "Preparing all student PDFs… this can take a few minutes for large cohorts."
+    );
+    try {
+      const res = await fetch("/api/admin/students/export-pdfs");
+      if (!res.ok) {
+        let message = "Could not build the download.";
+        try {
+          const d = await res.json();
+          message = d.error ?? message;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(message);
+      }
+
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] ?? "Anugraha2026_AllStudents.zip";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      const included = res.headers.get("X-Export-Included");
+      const skipped = res.headers.get("X-Export-Skipped");
+      let msg = included ? `Downloaded ${included} student PDFs.` : "Download ready.";
+      if (skipped && Number(skipped) > 0) {
+        msg += ` ${skipped} skipped (see _skipped.txt in the zip).`;
+      }
+      toast.success(msg, { id: pending });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not download PDFs",
+        { id: pending }
+      );
+    } finally {
+      setDownloadingZip(false);
+    }
+  }
 
   async function changePassword() {
     if (!currentPw || newPw.length < 8) {
@@ -174,6 +227,18 @@ export function AdminDashboardClient({ data }: { data: AdminData }) {
                 icon={<ShieldCheck className="w-4 h-4" />}
               >
                 Admins
+              </Button>
+            )}
+            {isSuperAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={downloadAllPdfs}
+                loading={downloadingZip}
+                icon={<FolderArchive className="w-4 h-4" />}
+                title="Download every student's PDF (all batches) as one zip"
+              >
+                All PDFs
               </Button>
             )}
             <Button
