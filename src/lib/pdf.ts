@@ -222,7 +222,7 @@ export async function generateStudentPdf(
             headerTemplate: `
               <style>${fontCss}</style>
               <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:${PDF_FONT_FAMILY};">
-                Rathinam Anugraha 2026 — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
+                Student Commitment Form — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
               </div>`,
             footerTemplate: `
               <style>${fontCss}</style>
@@ -378,7 +378,7 @@ function buildPdfHtml(student: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rathinam Anugraha 2026 — ${escapeHtml(student.name)}</title>
+  <title>Student Commitment Form — ${escapeHtml(student.name)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -485,9 +485,8 @@ function buildPdfHtml(student: {
   <!-- ─── COVER PAGE ──────────────────────────────────────────────────────── -->
   <div class="cover">
     ${student.batch.logoUrl ? `<img class="cover-logo" src="${student.batch.logoUrl}" alt="Institution logo" />` : ""}
-    <h1>Rathinam Anugraha 2026</h1>
-    <h2>Anugraha 2026 — Student Induction Record</h2>
-    <h2 style="font-size:12px;margin-top:-14px;">${escapeHtml(student.batch.institution.fullName)}</h2>
+    <h1>Student Commitment Form</h1>
+    <h2>${escapeHtml(student.batch.institution.fullName)}</h2>
     <table>
       <tr><td>Student Name</td><td>${escapeHtml(student.name)}</td></tr>
       <tr><td>Reg. No.</td><td>${escapeHtml(student.regNo)}</td></tr>
@@ -603,7 +602,7 @@ function buildPdfHtml(student: {
   </div>
 
   <div class="footer-stamp">
-    This document was generated digitally by the Rathinam Anugraha 2026 platform and is valid without a wet signature.
+    This document was generated digitally by the Student Commitment Form platform and is valid without a wet signature.
     Institution: ${escapeHtml(student.batch.institution.fullName)} · Generated: ${generatedAt}
   </div>
 
