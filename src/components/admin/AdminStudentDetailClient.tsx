@@ -27,6 +27,7 @@ interface Props {
   canManage?: boolean;
   pdfUrl?: string | null;
   pdfGeneratedAt?: string | null;
+  hasDocAssignment?: boolean;
   documents: Array<{
     id: string;
     type: string;
@@ -38,7 +39,7 @@ interface Props {
   agreements?: AgreementSummary[];
 }
 
-export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, pdfGeneratedAt, documents, agreements = [] }: Props) {
+export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, pdfGeneratedAt, hasDocAssignment = false, documents, agreements = [] }: Props) {
   const router = useRouter();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
@@ -422,7 +423,7 @@ export function AdminStudentDetailClient({ profile, canManage = false, pdfUrl, p
           )}
 
           {/* Documents review */}
-          {documents.length > 0 && (
+          {hasDocAssignment && documents.length > 0 && (
             <motion.div variants={listItem}>
               <Card padding="md">
                 <CardHeader><CardTitle>Uploaded Documents</CardTitle></CardHeader>

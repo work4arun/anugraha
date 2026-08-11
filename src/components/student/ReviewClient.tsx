@@ -48,6 +48,7 @@ interface ReviewData {
     data: unknown;
     signatures: Array<{ role: string; url: string }>;
   }>;
+  hasDocAssignment?: boolean;
   documents: Array<{
     id: string;
     type: string;
@@ -65,7 +66,7 @@ interface ReviewData {
 export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
-  const { student, batch, steps, documents, allSubmitted, agreements, agreementsPending } = reviewData;
+  const { student, batch, steps, hasDocAssignment, documents, allSubmitted, agreements, agreementsPending } = reviewData;
   const hasPendingAgreements = agreementsPending.length > 0;
   const readyForPdf = allSubmitted && !hasPendingAgreements;
 
@@ -295,7 +296,7 @@ export function ReviewClient({ reviewData }: { reviewData: ReviewData }) {
         )}
 
         {/* Documents summary */}
-        {documents.length > 0 && (
+        {hasDocAssignment && documents.length > 0 && (
           <>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted px-1 mb-3">
               Uploaded Documents

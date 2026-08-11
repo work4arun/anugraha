@@ -41,12 +41,15 @@ export default async function AdminStudentDetailPage({
     orderBy: { createdAt: "asc" },
   });
 
+  const hasDocAssignment = profile.steps.some((s) => s.type === "DOCUMENT_UPLOAD");
+
   return (
     <AdminStudentDetailClient
       profile={profile}
       canManage={canManage}
       pdfUrl={student?.pdfUrl ?? null}
       pdfGeneratedAt={student?.pdfGeneratedAt?.toISOString() ?? null}
+      hasDocAssignment={hasDocAssignment}
       documents={docs.map((d) => ({
         id: d.id,
         type: d.documentType,

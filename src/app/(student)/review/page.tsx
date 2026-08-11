@@ -71,6 +71,10 @@ export default async function ReviewPage() {
   }));
   const agreementsPending = agreements.filter((a) => a.status !== "COMPLETED");
 
+  const hasDocAssignment = student.batch.formAssignments.some(
+    (a) => a.formTemplate.type === "DOCUMENT_UPLOAD"
+  );
+
   const reviewData = {
     student: {
       id: student.id,
@@ -92,6 +96,7 @@ export default async function ReviewPage() {
       },
     },
     steps,
+    hasDocAssignment,
     documents: student.documents.map((d) => ({
       id: d.id,
       type: d.documentType,

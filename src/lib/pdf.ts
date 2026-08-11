@@ -504,7 +504,7 @@ function buildPdfHtml(student: {
   </div>
 
   ${student.batch.formAssignments
-    .filter((a) => a.formTemplate.type !== "DOCUMENT_UPLOAD" || hasDocuments)
+    .filter((a) => a.formTemplate.type !== "DOCUMENT_UPLOAD" || (hasDocAssignment && hasDocuments))
     .map((a, idx) => {
       // Only the signatures that belong to THIS template/section.
       const sigs = student.signatures.filter(
@@ -605,25 +605,6 @@ function buildPdfHtml(student: {
       `;
     })
     .join("")}
-
-  ${hasDocuments && !hasDocAssignment ? `
-  <!-- ─── DOCUMENTS PAGE ─────────────────────────────────────────────────── -->
-  <div class="page-break section">
-    <div class="section-title">Uploaded Documents</div>
-    <ul class="doc-list">
-      ${student.documents
-        .map(
-          (d) => `
-          <li>
-            <span class="check"><svg style="display:inline-block;vertical-align:middle;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
-            ${escapeHtml(d.label)}
-            <span style="color:#9CA3AF;margin-left:8px">(${escapeHtml(d.uploadStatus)})</span>
-          </li>`
-        )
-        .join("")}
-    </ul>
-  </div>
-  ` : ""}
 
   <div class="footer-stamp">
     This document was generated digitally by the Student Commitment Form platform and is valid without a wet signature.
