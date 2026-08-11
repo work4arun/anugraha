@@ -9,6 +9,7 @@ import { prisma } from "./prisma";
 import { uploadFile, resolveToDataUri, readFileBuffer } from "./storage";
 import { renderAgreementBytes, collectStudentSignatures, getPendingAgreements } from "./agreement";
 import { pdfFilename, formatDate } from "./utils";
+import { getPdfFontCss, PDF_FONT_FAMILY } from "./pdfFonts";
 
 interface PdfGenerationResult {
   url: string;
@@ -210,18 +211,22 @@ export async function generateStudentPdf(
           // Images are inlined as data URIs, so the document has no external requests —
           // `load` fires immediately and we still cap it with an explicit timeout.
           await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+          await (page as any).evaluate(() => document.fonts.ready);
 
+          const fontCss = getPdfFontCss();
           return page.pdf({
             format: "A4",
             printBackground: true,
             margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
             displayHeaderFooter: true,
             headerTemplate: `
-              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+              <style>${fontCss}</style>
+              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:${PDF_FONT_FAMILY};">
                 Rathinam Anugraha 2026 — ${escapeHtml(student.name)} (${escapeHtml(student.regNo)}) — CONFIDENTIAL
               </div>`,
             footerTemplate: `
-              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:sans-serif;">
+              <style>${fontCss}</style>
+              <div style="font-size:9px;width:100%;text-align:center;color:#666;font-family:${PDF_FONT_FAMILY};">
                 Page <span class="pageNumber"></span> of <span class="totalPages"></span>
               </div>`,
           });
@@ -365,6 +370,7 @@ function buildPdfHtml(student: {
   documents: Array<{ label: string; fileUrl: string; uploadStatus: string }>;
 }): string {
   const generatedAt = formatDate(new Date());
+  const fontCss = getPdfFontCss();
 
   return `
 <!DOCTYPE html>
@@ -373,10 +379,14 @@ function buildPdfHtml(student: {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rathinam Anugraha 2026 — ${escapeHtml(student.name)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    ${fontCss}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Segoe UI', Arial, sans-serif;
+      font-family: ${PDF_FONT_FAMILY};
       font-size: 11px;
       color: #111;
       background: white;
@@ -539,7 +549,7 @@ function buildPdfHtml(student: {
                   <td style="white-space:pre-line;font-weight:600">${escapeHtml(r.deliverable)}</td>
                   <td style="white-space:pre-line">${escapeHtml(r.keyPoints)}</td>
                   <td class="ack-cell">
-                    ${ackedIds.has(r.id) ? '<span class="ack-yes">✓</span>' : "—"}
+                    ${ackedIds.has(r.id) ? '<span class="ack-yes"><svg style="display:inline-block;vertical-align:middle;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>' : "—"}
                   </td>
                 </tr>
               `).join("")}
@@ -583,7 +593,7 @@ function buildPdfHtml(student: {
         .map(
           (d) => `
           <li>
-            <span class="check">✓</span>
+            <span class="check"><svg style="display:inline-block;vertical-align:middle;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
             ${escapeHtml(d.label)}
             <span style="color:#9CA3AF;margin-left:8px">(${escapeHtml(d.uploadStatus)})</span>
           </li>`

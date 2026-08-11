@@ -148,7 +148,15 @@ export async function renderAgreementBytes(
         : String(values[field.id] ?? "").trim();
     if (!text) continue;
 
-    // Helvetica can only encode WinAnsi — strip characters it can't draw
+    // Standard WinAnsi normalization for common punctuation (smart quotes, dashes, non-breaking spaces)
+    text = text
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u2022/g, "*")
+      .replace(/\u00A0/g, " ");
+
+    // Helvetica can only encode WinAnsi — strip remaining characters it can't draw
     // (e.g. Tamil script) rather than throwing and failing the whole PDF.
     try {
       font.widthOfTextAtSize(text, 10);
